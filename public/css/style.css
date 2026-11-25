@@ -1664,3 +1664,182 @@ button.bc-cell.free {
   color: var(--accent);
   border: 1px solid var(--accent);
 }
+
+/* ---------- ビンゴカード（紙のカード・穴あけ） ---------- */
+.paper-card {
+  --pc-b: #1e5bd8;
+  --pc-i: #e8127c;
+  --pc-n: #7a7a7a;
+  --pc-g: #12a150;
+  --pc-o: #f07a12;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 16px 14px 12px;
+  border-radius: 22px;
+  color: #111;
+  background-color: #fffdf8;
+  /* 紙吹雪の縁 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cg opacity='.9'%3E%3Crect x='8' y='12' width='9' height='5' rx='1' fill='%23e8127c' transform='rotate(25 12 14)'/%3E%3Crect x='70' y='6' width='9' height='5' rx='1' fill='%231e5bd8' transform='rotate(-30 74 8)'/%3E%3Crect x='112' y='40' width='9' height='5' rx='1' fill='%2312a150' transform='rotate(50 116 42)'/%3E%3Crect x='30' y='92' width='9' height='5' rx='1' fill='%23f07a12' transform='rotate(-15 34 94)'/%3E%3Crect x='96' y='112' width='9' height='5' rx='1' fill='%238e44ad' transform='rotate(35 100 114)'/%3E%3Ccircle cx='44' cy='40' r='3' fill='%23ffb800'/%3E%3Ccircle cx='124' cy='88' r='3' fill='%23e8127c'/%3E%3Ccircle cx='10' cy='126' r='3' fill='%231e5bd8'/%3E%3Ccircle cx='70' cy='70' r='2.5' fill='%2312a150'/%3E%3Cpath d='M100 20l2 5 5 .5-4 3.5 1.2 5-4.2-2.8-4.2 2.8 1.2-5-4-3.5 5-.5z' fill='%23ffc400'/%3E%3Cpath d='M20 60l1.6 4 4 .4-3 2.8 1 4-3.6-2.2-3.6 2.2 1-4-3-2.8 4-.4z' fill='%23ffc400'/%3E%3Cpath d='M56 118c6-6 10 4 16-2' stroke='%2300a3e0' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Cpath d='M118 64c-4 6 6 8 2 14' stroke='%23ff6b6b' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 84px 84px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.pc-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pc-head {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pc-letter {
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  width: min(100%, 64px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  color: #fff;
+  font-size: clamp(1.4rem, 8vw, 2.3rem);
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.18), 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.pc-letter[data-letter='B'] { background: var(--pc-b); }
+.pc-letter[data-letter='I'] { background: var(--pc-i); }
+.pc-letter[data-letter='N'] { background: var(--pc-n); }
+.pc-letter[data-letter='G'] { background: var(--pc-g); }
+.pc-letter[data-letter='O'] { background: var(--pc-o); }
+
+.pc-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.paper-card .bc-cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1.5px solid #2b2b2b;
+  border-radius: 9px;
+  color: #111;
+  font-family: 'Arial Rounded MT Bold', 'Hiragino Maru Gothic ProN', system-ui, sans-serif;
+  font-size: clamp(1.3rem, 7vw, 2rem);
+  font-weight: 900;
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.paper-card .bc-cell[data-col='B'] { background: #dbe7fb; }
+.paper-card .bc-cell[data-col='I'] { background: #fde0ec; }
+.paper-card .bc-cell[data-col='N'] { background: #ececec; }
+.paper-card .bc-cell[data-col='G'] { background: #dcf3e3; }
+.paper-card .bc-cell[data-col='O'] { background: #fde8d5; }
+
+.paper-card .bc-cell.free {
+  background: #f9b6d2;
+  font-size: clamp(0.75rem, 3.6vw, 1rem);
+  cursor: default;
+}
+
+.paper-card .bc-cell:active:not(.hit) {
+  transform: scale(0.94);
+}
+
+/* 押し抜いた穴（下の木のテーブルが見える） */
+.paper-card .bc-cell.hit .bc-num {
+  visibility: hidden;
+}
+
+.paper-card .bc-cell.hit::before {
+  content: '';
+  position: absolute;
+  inset: 13%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.16), transparent 45%),
+    repeating-linear-gradient(97deg, #8a4f22 0 5px, #9c5b29 5px 8px, #7b4318 8px 12px, #a6662f 12px 15px, #8f5223 15px 19px);
+  box-shadow:
+    inset 0 5px 9px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.18),
+    0 0 0 3px #fffaf0,
+    0 0 0 4.5px rgba(0, 0, 0, 0.1);
+}
+
+/* 紙のけば立ち */
+.paper-card .bc-cell.hit::after {
+  content: '';
+  position: absolute;
+  inset: calc(13% - 4px);
+  border-radius: 50%;
+  border: 2px dotted rgba(255, 255, 255, 0.95);
+  pointer-events: none;
+}
+
+.paper-card .bc-cell.punch-anim::before {
+  animation: punch 0.32s ease-out;
+}
+
+@keyframes punch {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.4;
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.paper-card .bc-cell.shake {
+  animation: cell-shake 0.35s;
+}
+
+/* そろった列の金色の線 */
+.pc-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.pc-lines line {
+  stroke: #fff3b0;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 2px #ffd23f) drop-shadow(0 0 6px #ffb300) drop-shadow(0 0 12px rgba(255, 190, 0, 0.7));
+  animation: line-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes line-glow {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.pc-foot {
+  align-self: center;
+  padding: 2px 14px;
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.92);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  font-size: 0.95rem;
+}

@@ -11,6 +11,17 @@
   const LETTERS = ['B', 'I', 'N', 'G', 'O'];
   const READINGS = { B: 'ビー', I: 'アイ', N: 'エヌ', G: 'ジー', O: 'オー' };
   const letterOf = (n) => LETTERS[Math.floor((n - 1) / 15)];
+  /** 5x5 のビンゴの列（横5・縦5・斜め2）。マスの番号は行優先 0〜24 */
+  const LINES = (() => {
+    const lines = [];
+    for (let i = 0; i < 5; i++) {
+      lines.push([0, 1, 2, 3, 4].map((c) => i * 5 + c));
+      lines.push([0, 1, 2, 3, 4].map((r) => r * 5 + i));
+    }
+    lines.push([0, 6, 12, 18, 24], [4, 8, 12, 16, 20]);
+    return lines;
+  })();
+  const SVG_NS = 'http://www.w3.org/2000/svg';
 
   function announce(n) {
     if (!('speechSynthesis' in window)) return;
@@ -532,7 +543,10 @@
       },
       '🎁 景品ルーレットを回す',
     );
-    const cardEl = h('div', { class: 'bingo-card' });
+    const cardEl = h('div', { class: 'paper-card' });
+    let gridEl = null;
+    let linesSvg = null;
+    let cardCells = []; // 25マス（行優先）
     const history = createHistory();
     const standingsEl = h('div', { class: 'card standings' });
     const prizeEl = Party.prizes.card({});
@@ -557,30 +571,70 @@
       if (!room.send({ t: 'bingo.mark', n })) return;
       pending.add(n);
       Party.unlockAudio();
-      Party.beep(880, 0.06, 0.15, 'triangle');
+      // 紙を押し抜く音（低い「ポン」＋紙の音）
+      Party.beep(180, 0.09, 0.3, 'sine');
+      Party.beep(1200, 0.03, 0.06, 'square', 0.02);
       Party.vibrate(30);
-      cell.classList.add('flash');
+      cell.classList.remove('punch-anim');
+      void cell.offsetWidth;
+      cell.classList.add('punch-anim');
       render(room.room);
     }
 
     function buildCard(card) {
       cells.clear();
+      cardCells = card.map((n, i) => {
+        const free = n === 0;
+        const cell = h(
+          'button',
+          {
+            type: 'button',
+            class: `bc-cell${free ? ' free hit' : ''}`,
+            'data-col': LETTERS[i % 5],
+            'aria-label': free ? 'FREE' : `${letterOf(n)}${n}`,
+            onclick: () => tap(n, cell),
+          },
+          h('span', { class: 'bc-num' }, free ? 'FREE' : String(n)),
+        );
+        if (!free) cells.set(n, cell);
+        return cell;
+      });
+      linesSvg = document.createElementNS(SVG_NS, 'svg');
+      linesSvg.setAttribute('class', 'pc-lines');
+      linesSvg.setAttribute('aria-hidden', 'true');
+      gridEl = h('div', { class: 'pc-grid' }, cardCells, linesSvg);
       cardEl.replaceChildren(
-        ...LETTERS.map((l) => h('div', { class: 'bc-head', 'data-letter': l }, l)),
-        ...card.map((n) => {
-          const free = n === 0;
-          const cell = h(
-            'button',
-            {
-              type: 'button',
-              class: `bc-cell${free ? ' free hit' : ''}`,
-              'aria-label': free ? 'FREE' : `${letterOf(n)}${n}`,
-              onclick: () => tap(n, cell),
-            },
-            free ? 'FREE' : String(n),
-          );
-          if (!free) cells.set(n, cell);
-          return cell;
+        h(
+          'div',
+          { class: 'pc-inner' },
+          h('div', { class: 'pc-head' }, LETTERS.map((l) => h('span', { class: 'pc-letter', 'data-letter': l }, l))),
+          gridEl,
+          h('div', { class: 'pc-foot' }, 'PARTY BINGO'),
+        ),
+      );
+    }
+
+    /** そろった列に金色の線を引く */
+    function drawLines(marked) {
+      if (!gridEl || !linesSvg) return;
+      const full = LINES.filter((line) => line.every((i) => cardCells[i].classList.contains('free') || marked.has(Number(cardCells[i].textContent))));
+      const gw = gridEl.clientWidth;
+      const gh = gridEl.clientHeight;
+      linesSvg.setAttribute('viewBox', `0 0 ${gw} ${gh}`);
+      const center = (i) => {
+        const c = cardCells[i];
+        return [c.offsetLeft + c.offsetWidth / 2, c.offsetTop + c.offsetHeight / 2];
+      };
+      linesSvg.replaceChildren(
+        ...full.map((line) => {
+          const [x1, y1] = center(line[0]);
+          const [x2, y2] = center(line[4]);
+          const el = document.createElementNS(SVG_NS, 'line');
+          el.setAttribute('x1', x1);
+          el.setAttribute('y1', y1);
+          el.setAttribute('x2', x2);
+          el.setAttribute('y2', y2);
+          return el;
         }),
       );
     }
@@ -605,6 +659,7 @@
         cell.classList.toggle('hit', hit);
         cell.setAttribute('aria-pressed', String(hit));
       }
+      drawLines(marked);
 
       const drawn = visibleDrawn();
       countEl.textContent = `${drawn.length} / 75`;
@@ -674,8 +729,13 @@
     );
     render(room.room);
 
+    // 画面の幅が変わったら金色の線を引き直す
+    const resize = new ResizeObserver(() => drawLines(markedSet()));
+    resize.observe(cardEl);
+
     return () => {
       ball.stop();
+      resize.disconnect();
       if ('speechSynthesis' in window) speechSynthesis.cancel();
     };
   }
