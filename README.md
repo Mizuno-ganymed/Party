@@ -24,6 +24,11 @@
 - **サウンド切替**: 右上の 🔊 で効果音をオン/オフ
 - **画面スリープ防止**: タイマー作動中は画面が消えないようにします（対応ブラウザのみ）
 - ダーク/ライトモードは端末の設定に自動で合わせます
+- **PWA対応**: ホーム画面に追加してアプリのように使え、一度開けばオフラインでも動きます
+
+## 公開URL
+
+<https://party-tools-6ek.pages.dev>（Cloudflare Pages。`main` ブランチへのプッシュで自動デプロイ）
 
 ## 使い方
 
@@ -39,10 +44,16 @@ python3 -m http.server 8000
 
 GitHub Pages などの静的ホスティングにそのまま置いて公開することもできます。
 
+> PWA の機能（ホーム画面への追加・オフライン）は HTTPS か `localhost` で開いたときだけ有効です。`index.html` を直接開いた場合は通常のWebページとして動きます。
+
 ## ディレクトリ構成
 
 ```
 index.html          エントリーポイント
+manifest.webmanifest  PWA の設定（アプリ名・アイコンなど）
+sw.js               Service Worker（オフライン対応）
+_headers            Cloudflare Pages 用のヘッダー設定
+icons/              アプリアイコン
 css/style.css       スタイル
 js/core.js          共通処理（ルーティング、保存、メンバー、UI部品、乱数、サウンド）
 js/tools/*.js       各ツール（1ファイル = 1ツール）
@@ -70,5 +81,6 @@ js/tools/*.js       各ツール（1ファイル = 1ツール）
    ```
 
 2. `index.html` に `<script src="js/tools/mytool.js" defer></script>` を追加します（読み込み順がホームでの並び順になります）。
+3. `sw.js` の `APP_FILES` にファイルを追加し、`VERSION` を上げます（オフラインで使えるようにするため）。
 
 `Party` には `h`（DOM生成）、`store`（保存）、`members`（共有メンバー）、`memberEditor`、`stepper`、`segmented`、`field`、`randInt`、`shuffle`、`beep`、`fanfare`、`vibrate`、`copy`、`toast`、`keepAwake` などの共通部品があります。

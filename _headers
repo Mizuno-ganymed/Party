@@ -1,0 +1,11 @@
+# Cloudflare Pages 用のレスポンスヘッダー設定
+
+# Service Worker と manifest は常に最新を確認させる
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

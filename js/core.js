@@ -373,11 +373,83 @@
     if (document.visibilityState === 'visible' && wantAwake) keepAwake(true);
   });
 
+  // ---------- PWA（ホーム画面に追加・オフライン） ----------
+  let installPrompt = null;
+  const isStandalone = () =>
+    window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = () =>
+    /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    if (!location.hash.replace(/^#\/?/, '')) route(); // ホーム表示中ならボタンを出す
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    toast('ホーム画面に追加しました');
+  });
+
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker の登録に失敗:', e));
+    });
+  }
+
+  /** ホームに出す「アプリとして追加」案内 */
+  function installBanner() {
+    if (isStandalone() || store.get('installDismissed', false)) return null;
+    let body;
+    if (installPrompt) {
+      body = h(
+        'button',
+        {
+          type: 'button',
+          class: 'btn primary',
+          async onclick() {
+            const p = installPrompt;
+            installPrompt = null;
+            p.prompt();
+            await p.userChoice.catch(() => null);
+            route();
+          },
+        },
+        '📲 ホーム画面に追加',
+      );
+    } else if (isIOS()) {
+      body = h('span', null, 'Safari の共有ボタン（□↑）→「ホーム画面に追加」で、アプリのように使えます');
+    } else {
+      return null;
+    }
+    const banner = h(
+      'div',
+      { class: 'install-banner' },
+      h('span', { class: 'install-text' }, h('strong', null, 'アプリとして使う'), ' オフラインでも動きます'),
+      body,
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'chip-x',
+          'aria-label': '閉じる',
+          onclick() {
+            store.set('installDismissed', true);
+            banner.remove();
+          },
+        },
+        '×',
+      ),
+    );
+    return banner;
+  }
+
   // ---------- ルーティング ----------
   let cleanup = null;
 
   function renderHome(main) {
     main.append(
+      installBanner(),
       h('p', { class: 'lead' }, 'パーティや飲み会で使える便利ツール集。メンバーを一度登録すれば、すべてのツールで使えます。'),
       memberEditor({ open: false }),
       h(
@@ -439,6 +511,8 @@
     window.addEventListener('hashchange', route);
     route();
   }
+
+  registerServiceWorker();
 
   window.Party = {
     register(tool) {
