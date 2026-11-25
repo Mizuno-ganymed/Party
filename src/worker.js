@@ -58,16 +58,18 @@ function json(data, status = 200) {
 const PRIZE_MODES = ['all', 'top'];
 
 /**
- * 各景品のうち、いまルーレットにのっている個数
- * all: 残っている全部 / top: 一覧の上から size 個分（当たったら次が補充される）
+ * 各景品のルーレット上の重み（0 ならのっていない）
+ * all: 残っている全部（個数が多いほど当たりやすい）
+ * top: 一覧の上から size 種類（同じ確率）。なくなった景品の代わりに次の景品が入る
  */
 function prizesOnWheel(items, mode, size) {
   if (mode !== 'top') return items.map((it) => it.left);
+  // 上から size 種類。個数に関係なく1種類 = 1（同じ確率）。個数が0になった景品の代わりに次の景品が入る
   let slots = size;
   return items.map((it) => {
-    const n = Math.min(it.left, slots);
-    slots -= n;
-    return n;
+    if (it.left <= 0 || slots <= 0) return 0;
+    slots -= 1;
+    return 1;
   });
 }
 

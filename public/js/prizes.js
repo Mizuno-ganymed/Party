@@ -46,15 +46,17 @@
 
   /**
    * 各景品のうち、いまルーレットにのっている個数（サーバーの prizesOnWheel と同じ）
-   * all: 残っている全部 / top: 一覧の上から size 個分（当たったら次が補充される）
+   * all: 残っている全部（個数が多いほど当たりやすい）
+   * top: 一覧の上から size 種類（同じ確率）。なくなった景品の代わりに次の景品が入る
    */
   function onWheel(items, mode = 'all', size = 5) {
     if (mode !== 'top') return items.map((it) => it.left);
+    // 上から size 種類。個数に関係なく1種類 = 1（同じ確率）。個数が0になった景品の代わりに次の景品が入る
     let slots = size;
     return items.map((it) => {
-      const n = Math.min(it.left, slots);
-      slots -= n;
-      return n;
+      if (it.left <= 0 || slots <= 0) return 0;
+      slots -= 1;
+      return 1;
     });
   }
 
@@ -104,14 +106,14 @@
               'li',
               { class: [it.left ? '' : 'gone', counts[i] ? 'on-wheel' : ''].join(' ') },
               h('span', { class: 'prize-name' }, it.name),
-              counts[i] ? h('span', { class: 'wheel-badge', title: 'いまルーレットにのっている数' }, `🎡 ${counts[i]}`) : null,
+              counts[i] ? h('span', { class: 'wheel-badge', title: 'いまルーレットにのっている景品' }, '🎡') : null,
               h('span', { class: 'prize-count' }, `${it.left} / ${it.total}`),
             ),
           ),
         )
       : h('p', { class: 'muted small' }, editable ? 'まだ景品が登録されていません' : '景品はまだ登録されていません');
 
-    const modeText = mode === 'top' ? `ルーレット: 一覧の上から ${size}個（当たったら次の景品を補充）` : 'ルーレット: 残っている景品をすべてのせる';
+    const modeText = mode === 'top' ? `ルーレット: 一覧の上から ${size}種類（なくなったら次の景品を補充）` : 'ルーレット: 残っている景品をすべてのせる';
     let modeEl = items.length || editable ? h('p', { class: 'muted small prize-mode-text' }, '🎡 ', modeText) : null;
     if (editable && onMode) {
       modeEl = h(
@@ -131,11 +133,17 @@
               'div',
               { class: 'row' },
               h('span', null, '一覧の上から'),
-              Party.stepper({ value: size, min: 1, max: 20, label: 'ルーレットにのせる数', onChange: (v) => onMode('top', v) }),
-              h('span', null, '個'),
+              Party.stepper({ value: size, min: 1, max: 20, label: 'ルーレットにのせる種類の数', onChange: (v) => onMode('top', v) }),
+              h('span', null, '種類'),
             )
           : null,
-        h('p', { class: 'muted small' }, mode === 'top' ? '当選者が出るたびに、一覧の次の景品が1個ずつ補充されます' : '残っている景品をすべてのせます（個数が多いほど当たりやすい）'),
+        h(
+          'p',
+          { class: 'muted small' },
+          mode === 'top'
+            ? 'のっている景品は同じ確率で当たります。個数が0になった景品の代わりに、一覧の次の景品が加わります'
+            : '残っている景品をすべてのせます（個数が多いほど当たりやすい）',
+        ),
       );
     }
 
