@@ -5,8 +5,13 @@ Party.register({
   name: 'チーム分け',
   icon: '🤝',
   desc: 'メンバーをランダムにチーム分け',
+  room: true,
   render(root) {
     const { h } = Party;
+    const room = Party.room;
+    const inRoom = room.active;
+    const isGuest = inRoom && !room.isHost;
+    let lastId = inRoom ? room.room?.results.teams?.id ?? 0 : 0;
     const saved = Party.store.get('teams.settings', {});
     let mode = saved.mode === 'size' ? 'size' : 'count';
     let value = Number(saved.value) || 2;
@@ -44,7 +49,16 @@ Party.register({
       k = Math.max(1, Math.min(list.length, k));
       const teams = Array.from({ length: k }, () => []);
       Party.shuffle(list).forEach((name, i) => teams[i % k].push(name));
-      lastTeams = Party.shuffle(teams); // 人数の多いチームが常に先頭にならないように
+      const result = Party.shuffle(teams); // 人数の多いチームが常に先頭にならないように
+      if (inRoom) {
+        room.send({ t: 'result', kind: 'teams', teams: result });
+        return;
+      }
+      show(result);
+    }
+
+    function show(teams) {
+      lastTeams = teams;
       render();
       Party.beep(660, 0.1);
       Party.beep(990, 0.15, 0.2, 'sine', 0.08);
@@ -67,6 +81,32 @@ Party.register({
     function copyResult() {
       if (!lastTeams) return;
       Party.copy(lastTeams.map((m, i) => `${teamName(i)}: ${m.join('、')}`).join('\n'));
+    }
+
+    if (inRoom) {
+      const initial = room.room?.results.teams;
+      if (initial) {
+        lastTeams = initial.teams;
+        render();
+      }
+      room.on((r, ev) => {
+        const res = r?.results.teams;
+        if (res && res.id !== lastId) {
+          lastId = res.id;
+          if (ev?.type === 'result') show(res.teams);
+          else {
+            lastTeams = res.teams;
+            render();
+          }
+        }
+        if (isGuest) msg.textContent = !r ? '接続中…' : res ? '' : '主催者がチームを分けるのを待っています';
+      });
+    }
+
+    if (isGuest) {
+      msg.textContent = room.room ? (lastTeams ? '' : '主催者がチームを分けるのを待っています') : '接続中…';
+      root.append(msg, resultBox, h('div', { class: 'row center' }, copyBtn));
+      return;
     }
 
     root.append(

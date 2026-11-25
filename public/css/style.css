@@ -962,3 +962,283 @@ details > summary {
     transition: none !important;
   }
 }
+
+/* ---------- 部屋 ---------- */
+.small {
+  font-size: 0.85rem;
+}
+
+p.small {
+  margin: 0;
+}
+
+.room-badge {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.85rem;
+  font-weight: bold;
+  text-decoration: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.room-badge::after {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #f5a623;
+  vertical-align: middle;
+}
+
+.room-badge[data-status='open']::after {
+  background: #3ecf8e;
+}
+
+.room-card {
+  margin-bottom: 16px;
+}
+
+.room-card.in-room {
+  border-color: var(--accent);
+}
+
+.room-code {
+  font-size: 2.2rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.code-input {
+  font-size: 1.2rem;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.invite {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.invite-body {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qr {
+  width: 140px;
+  flex: none;
+  background: #fff;
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.room-member .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-right: 6px;
+  flex: none;
+}
+
+.room-member.online .dot {
+  background: #3ecf8e;
+}
+
+.room-member {
+  padding-right: 12px;
+}
+
+.room-member:not(.online) {
+  opacity: 0.6;
+}
+
+.tool-badge {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+/* ---------- ビンゴ（部屋） ---------- */
+.bingo-ball.small {
+  width: 96px;
+  height: 96px;
+}
+
+.bingo-ball.small .bingo-num {
+  font-size: 2rem;
+}
+
+.bingo-ball.small .bingo-letter-sm {
+  font-size: 0.8rem;
+}
+
+.guest-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.guest-top .center-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.my-status {
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.my-status:empty {
+  display: none;
+}
+
+.my-status.reach {
+  color: var(--accent-2);
+  animation: pop 0.5s ease-out;
+}
+
+.my-status.bingo {
+  color: var(--accent);
+  animation: pop 0.5s ease-out;
+}
+
+.bingo-card {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.bc-head {
+  text-align: center;
+  font-weight: 900;
+  font-size: 1.4rem;
+  padding-bottom: 2px;
+}
+
+.bc-head[data-letter='B'] { color: #5aa9ff; }
+.bc-head[data-letter='I'] { color: #ff5c8a; }
+.bc-head[data-letter='N'] { color: #a3a3a3; }
+.bc-head[data-letter='G'] { color: #4dd4ac; }
+.bc-head[data-letter='O'] { color: #ffb84d; }
+
+.bc-cell {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: clamp(1.1rem, 6vw, 1.7rem);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+}
+
+.bc-cell.hit {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.bc-cell.free {
+  font-size: clamp(0.7rem, 3.4vw, 0.95rem);
+}
+
+.bc-cell.last {
+  outline: 3px solid var(--accent-2);
+  outline-offset: 1px;
+}
+
+.bc-cell.flash {
+  animation: pop 0.6s ease-out;
+}
+
+.standings h2 {
+  margin: 0;
+}
+
+.winners {
+  margin: 0;
+  padding-left: 1.6em;
+  font-weight: bold;
+}
+
+.chip.reach {
+  padding: 4px 12px;
+  border-color: var(--accent-2);
+}
+
+.me {
+  color: var(--accent);
+}
+
+.celebrate {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  font-size: clamp(2rem, 10vw, 3.4rem);
+  font-weight: 900;
+  color: #fff;
+  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  animation: pop 0.5s ease-out;
+  pointer-events: none;
+}
+
+/* ---------- 参加者の閲覧専用表示 ---------- */
+.score-row.readonly {
+  padding: 12px 16px;
+}
+
+.order-list.no-anim li {
+  animation: none;
+}

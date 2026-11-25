@@ -8,7 +8,7 @@
  *
  * ファイルを追加・削除したら APP_FILES を更新し、VERSION を上げてください。
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `party-tools-${VERSION}`;
 
 const APP_FILES = [
@@ -16,6 +16,8 @@ const APP_FILES = [
   'manifest.webmanifest',
   'css/style.css',
   'js/core.js',
+  'js/vendor/qrcode.js',
+  'js/room.js',
   'js/tools/roulette.js',
   'js/tools/teams.js',
   'js/tools/order.js',
@@ -53,6 +55,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return; // 部屋の通信はキャッシュしない
 
   // ページ遷移は常にトップページ（1ページ構成のため）
   const key = request.mode === 'navigate' ? new URL('./', self.location).href : request;

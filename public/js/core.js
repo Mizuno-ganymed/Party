@@ -186,6 +186,28 @@
     members.onChange(render);
     render();
 
+    // 部屋の主催者は入室者をまとめて追加できる
+    const room = window.Party?.room;
+    const roomBtn =
+      room?.active && room.isHost
+        ? h(
+            'button',
+            {
+              type: 'button',
+              class: 'btn small',
+              onclick() {
+                const names = (room.room?.members || []).filter((m) => !m.host).map((m) => m.name);
+                if (!names.length) {
+                  toast('まだ参加者が入室していません');
+                  return;
+                }
+                add(names.join('\n'));
+              },
+            },
+            '🏠 入室者を追加',
+          )
+        : null;
+
     const isOpen = open ?? members.get().length < 2;
     return h(
       'details',
@@ -201,7 +223,7 @@
           input,
           h('button', { type: 'button', class: 'btn', onclick: () => add() }, '追加'),
         ),
-        h('div', { class: 'row end' }, clearBtn),
+        h('div', { class: 'row end' }, roomBtn, clearBtn),
       ),
     );
   }
@@ -355,7 +377,9 @@
   let wakeLock = null;
   let wantAwake = false;
   async function keepAwake(on) {
-    wantAwake = on;
+    // 部屋に入っている間は常に画面を点けたままにする
+    wantAwake = on || !!window.Party?.room?.active;
+    on = wantAwake;
     try {
       if (on && 'wakeLock' in navigator && !wakeLock) {
         wakeLock = await navigator.wakeLock.request('screen');
@@ -447,10 +471,12 @@
   // ---------- ルーティング ----------
   let cleanup = null;
 
-  function renderHome(main) {
-    main.append(
+  function renderHome(main, joinCode) {
+    const inRoom = window.Party.room?.active;
+    append(main, [
       installBanner(),
-      h('p', { class: 'lead' }, 'パーティや飲み会で使える便利ツール集。メンバーを一度登録すれば、すべてのツールで使えます。'),
+      inRoom ? null : h('p', { class: 'lead' }, 'パーティや飲み会で使える便利ツール集。メンバーを一度登録すれば、すべてのツールで使えます。'),
+      window.Party.room?.homeCard({ joinCode }),
       memberEditor({ open: false }),
       h(
         'nav',
@@ -462,10 +488,11 @@
             h('span', { class: 'tool-icon', 'aria-hidden': 'true' }, t.icon),
             h('span', { class: 'tool-name' }, t.name),
             h('span', { class: 'tool-desc' }, t.desc),
+            inRoom && t.room ? h('span', { class: 'tool-badge' }, '部屋で共有') : null,
           ),
         ),
       ),
-    );
+    ]);
   }
 
   function route() {
@@ -478,10 +505,12 @@
       cleanup = null;
     }
     memberListeners.clear();
+    window.Party.room?._clearListeners();
     keepAwake(false);
 
-    const id = location.hash.replace(/^#\/?/, '');
+    const [id, arg] = location.hash.replace(/^#\/?/, '').split('/');
     const tool = tools.find((t) => t.id === id);
+    const joinCode = id === 'join' && /^\d{6}$/.test(arg || '') ? arg : undefined;
     const main = document.getElementById('app');
     main.replaceChildren();
 
@@ -494,9 +523,19 @@
       main.append(view);
       cleanup = tool.render(view) || null;
     } else {
-      renderHome(main);
+      renderHome(main, joinCode);
     }
+    syncNav();
     window.scrollTo(0, 0);
+  }
+
+  /** 主催者が共有ツールを開いたら、参加者の画面も切り替える */
+  function syncNav() {
+    const room = window.Party.room;
+    if (!room?.active || !room.isHost || room.status !== 'open') return;
+    const id = location.hash.replace(/^#\/?/, '').split('/')[0];
+    const tool = tools.find((t) => t.id === id);
+    if (tool?.room && room.room?.tool !== tool.id) room.send({ t: 'nav', tool: tool.id }, true);
   }
 
   function start() {
@@ -508,6 +547,8 @@
       if (soundOn) beep(880, 0.08);
     });
     updateSoundBtn();
+    // 最初のタップで音を出せるようにしておく（参加者の画面は自分で操作しないため）
+    document.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
     window.addEventListener('hashchange', route);
     route();
   }
@@ -534,6 +575,8 @@
     unlockAudio,
     vibrate,
     keepAwake,
+    refresh: () => route(),
+    syncNav: () => syncNav(),
     COLORS: ['#ff5c8a', '#ffb84d', '#4dd4ac', '#5aa9ff', '#a77bff', '#ff7a45', '#2ec4d6', '#e85dd8', '#8bd346', '#f25f5c'],
   };
 

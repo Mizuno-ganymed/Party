@@ -16,6 +16,24 @@
 | 🅱️ ビンゴ | 1〜75の抽選マシン。日本語で番号を読み上げ、1つ戻す機能つき |
 | 💴 割り勘 | 端数単位（1〜1000円）、切り上げ/切り捨ての比較、傾斜（多めに払う人）に対応 |
 
+## 部屋で遊ぶ（複数のスマホで共有）
+
+ホーム画面で「新しい部屋を作る」と6桁の部屋番号とQRコードが表示されます。参加者は番号を入力するか、QRコード（招待リンク）から入室します。別のグループは別の部屋番号を使うので、同時に何組でも遊べます。
+
+| ツール | 主催者（部屋を作った人） | 参加者 |
+| --- | --- | --- |
+| 🅱️ ビンゴ | 番号を引く。リーチ・ビンゴの人が一覧に出る | 自分専用のカードに自動で印がつく。リーチ・ビンゴを自動判定 |
+| 🏆 スコアボード | 得点を操作 | 見るだけ（リアルタイム更新） |
+| 🎯 ルーレット | 回す | 同じルーレットが同時に回り、同じ人に止まる |
+| 🤝 チーム分け / 🔢 順番決め | 決める | 結果が表示される |
+| ⏱️ タイマー | スタート・一時停止 | 全員の画面で同時にカウントダウン・同時に終了 |
+
+- 操作できるのは主催者だけです（主催者の端末に保存された鍵で判定）
+- 主催者が共有ツールを開くと、参加者の画面も自動で同じツールに切り替わります
+- 部屋に入っている間は画面が消えないようにします
+- 最後の操作から24時間たち、誰も接続していない部屋は自動で削除されます
+- サイコロ・割り勘などは部屋に関係なく各自の端末で使えます
+
 ## 共通の機能
 
 - **共有メンバー**: 一度登録した参加者を全ツールで使い回せます（カンマ・改行区切りでまとめて貼り付け可）
@@ -28,40 +46,53 @@
 
 ## 公開URL
 
-<https://party-tools-6ek.pages.dev>（Cloudflare Pages。`main` ブランチへのプッシュで自動デプロイ）
+Cloudflare Workers で公開しています（`main` ブランチへのプッシュで自動デプロイ）。
 
-## 使い方
+## 開発
 
-`index.html` をブラウザで開くだけで動きます。
-
-ローカルサーバーで動かす場合:
+部屋の機能を含めて動かすには Node.js が必要です。
 
 ```bash
-python3 -m http.server 8000
+npm install
 ```
 
-その後 <http://localhost:8000> を開きます。
+```bash
+npm run dev
+```
 
-GitHub Pages などの静的ホスティングにそのまま置いて公開することもできます。
+その後 <http://localhost:8787> を開きます（Cloudflare と同じ仕組みがローカルで動きます。アカウントは不要です）。
+
+部屋を使わないツールだけなら、`public/index.html` をブラウザで直接開いても動きます。
+
+## デプロイ（Cloudflare Workers）
+
+Cloudflare の管理画面で「Workers & Pages」→「作成」→「リポジトリをインポート」からこのリポジトリを選ぶと、`main` へのプッシュごとに `npx wrangler deploy` が実行されます。Worker 名は `party-tools`（`wrangler.jsonc` の `name`）にしてください。
+
+部屋の状態は Durable Objects（SQLite）に保存されます。無料プランで利用できます。
 
 > PWA の機能（ホーム画面への追加・オフライン）は HTTPS か `localhost` で開いたときだけ有効です。`index.html` を直接開いた場合は通常のWebページとして動きます。
 
 ## ディレクトリ構成
 
 ```
-index.html          エントリーポイント
-manifest.webmanifest  PWA の設定（アプリ名・アイコンなど）
-sw.js               Service Worker（オフライン対応）
-_headers            Cloudflare Pages 用のヘッダー設定
-icons/              アプリアイコン
-css/style.css       スタイル
-js/core.js          共通処理（ルーティング、保存、メンバー、UI部品、乱数、サウンド）
-js/tools/*.js       各ツール（1ファイル = 1ツール）
+wrangler.jsonc               Cloudflare の設定
+src/worker.js                サーバー（部屋の作成・WebSocket・状態管理）
+public/                      ブラウザに配信するファイル
+  index.html                 エントリーポイント
+  manifest.webmanifest       PWA の設定（アプリ名・アイコンなど）
+  sw.js                      Service Worker（オフライン対応）
+  _headers                   レスポンスヘッダー設定
+  icons/                     アプリアイコン
+  css/style.css              スタイル
+  js/core.js                 共通処理（ルーティング、保存、メンバー、UI部品、乱数、サウンド）
+  js/room.js                 部屋への接続・ホーム画面の部屋カード
+  js/vendor/qrcode.js        QRコード生成（qrcode-generator, MIT License）
+  js/tools/*.js              各ツール（1ファイル = 1ツール）
 ```
 
 ## ツールの追加方法
 
-1. `js/tools/mytool.js` を作成し、`Party.register()` で登録します。
+1. `public/js/tools/mytool.js` を作成し、`Party.register()` で登録します。
 
    ```js
    'use strict';
@@ -80,7 +111,9 @@ js/tools/*.js       各ツール（1ファイル = 1ツール）
    });
    ```
 
-2. `index.html` に `<script src="js/tools/mytool.js" defer></script>` を追加します（読み込み順がホームでの並び順になります）。
-3. `sw.js` の `APP_FILES` にファイルを追加し、`VERSION` を上げます（オフラインで使えるようにするため）。
+2. `public/index.html` に `<script src="js/tools/mytool.js" defer></script>` を追加します（読み込み順がホームでの並び順になります）。
+3. `public/sw.js` の `APP_FILES` にファイルを追加し、`VERSION` を上げます（オフラインで使えるようにするため）。
+
+部屋で共有するツールにする場合は `room: true` を付け、`Party.room`（`active` / `isHost` / `room` / `send()` / `on()`）を使います。サーバー側の処理は `src/worker.js` の `apply()` に追加します。
 
 `Party` には `h`（DOM生成）、`store`（保存）、`members`（共有メンバー）、`memberEditor`、`stepper`、`segmented`、`field`、`randInt`、`shuffle`、`beep`、`fanfare`、`vibrate`、`copy`、`toast`、`keepAwake` などの共通部品があります。

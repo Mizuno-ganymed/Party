@@ -1,0 +1,459 @@
+'use strict';
+
+/**
+ * ビンゴ
+ * - 部屋なし: この端末だけで番号を引く（従来どおり）
+ * - 部屋の主催者: 番号を引くと全員に配信。参加者のリーチ・ビンゴを一覧表示
+ * - 部屋の参加者: 自分のビンゴカードに自動で印がつく
+ */
+(function () {
+  const { h } = Party;
+  const LETTERS = ['B', 'I', 'N', 'G', 'O'];
+  const READINGS = { B: 'ビー', I: 'アイ', N: 'エヌ', G: 'ジー', O: 'オー' };
+  const letterOf = (n) => LETTERS[Math.floor((n - 1) / 15)];
+
+  function announce(n) {
+    if (!('speechSynthesis' in window)) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(`${READINGS[letterOf(n)]}、${n}`);
+      u.lang = 'ja-JP';
+      speechSynthesis.speak(u);
+    } catch {
+      /* 非対応 */
+    }
+  }
+
+  /** 番号ボール */
+  function createBall(small = false) {
+    const el = h('div', { class: `bingo-ball${small ? ' small' : ''}`, 'aria-live': 'polite' });
+    let timer = 0;
+    const show = (n, rolling = false) => {
+      if (n == null) {
+        el.replaceChildren(h('span', { class: 'bingo-num' }, '—'));
+        el.dataset.letter = '';
+      } else {
+        el.replaceChildren(h('span', { class: 'bingo-letter-sm' }, letterOf(n)), h('span', { class: 'bingo-num' }, String(n)));
+        el.dataset.letter = letterOf(n);
+      }
+      el.classList.toggle('rolling', rolling);
+    };
+    /** 抽選演出: candidates からランダム表示を繰り返し、最後に final を出す */
+    const roll = (candidates, final, onDone, steps = 16) => {
+      clearInterval(timer);
+      let i = 0;
+      timer = setInterval(() => {
+        show(candidates.length ? candidates[Party.randInt(candidates.length)] : final, true);
+        Party.beep(500 + i * 25, 0.03, 0.08, 'square');
+        if (++i >= steps) {
+          clearInterval(timer);
+          show(final);
+          el.classList.remove('pop');
+          void el.offsetWidth;
+          el.classList.add('pop');
+          Party.beep(988, 0.2, 0.2, 'triangle');
+          onDone?.();
+        }
+      }, 55);
+    };
+    return { el, show, roll, stop: () => clearInterval(timer) };
+  }
+
+  /** 1〜75 の一覧ボード */
+  function createBoard() {
+    const el = h('div', { class: 'bingo-board' });
+    const cells = new Map();
+    for (let r = 0; r < 5; r++) {
+      el.append(h('div', { class: 'bingo-letter' }, LETTERS[r]));
+      for (let c = 1; c <= 15; c++) {
+        const n = r * 15 + c;
+        const cell = h('div', { class: 'bingo-cell' }, String(n));
+        cells.set(n, cell);
+        el.append(cell);
+      }
+    }
+    const update = (drawn) => {
+      const set = new Set(drawn);
+      const last = drawn[drawn.length - 1];
+      for (const [n, cell] of cells) {
+        cell.classList.toggle('hit', set.has(n));
+        cell.classList.toggle('last', n === last);
+      }
+    };
+    return { el, update };
+  }
+
+  function recentChips(el, drawn) {
+    el.replaceChildren(
+      ...drawn
+        .slice(-8)
+        .reverse()
+        .slice(1)
+        .map((n) => h('span', { class: 'bingo-chip', 'data-letter': letterOf(n) }, `${letterOf(n)}${n}`)),
+    );
+  }
+
+  function speakToggle(key, fallback) {
+    let on = Party.store.get(key, fallback);
+    const label = h(
+      'label',
+      { class: 'check' },
+      h('input', {
+        type: 'checkbox',
+        checked: on,
+        onchange(e) {
+          on = e.target.checked;
+          Party.store.set(key, on);
+        },
+      }),
+      ' 番号を読み上げる',
+    );
+    return { el: label, get on() {
+      return on;
+    } };
+  }
+
+  /** リーチ・ビンゴの一覧 */
+  function standings(el, bingo, youId) {
+    const winners = bingo.winners || [];
+    const reach = (bingo.reach || []).slice().sort((a, b) => b.lines - a.lines);
+    const mark = (id, text) => (id === youId ? h('strong', { class: 'me' }, `${text}（あなた）`) : text);
+    el.replaceChildren(
+      h('h2', null, `🏆 ビンゴ ${winners.length}人`, h('span', { class: 'muted' }, ` / 参加 ${bingo.players}人`)),
+      winners.length
+        ? h(
+            'ol',
+            { class: 'winners' },
+            winners.map((w) => h('li', null, mark(w.id, w.name), h('span', { class: 'muted' }, `  ${w.count}個目`))),
+          )
+        : h('p', { class: 'muted' }, 'まだビンゴの人はいません'),
+      h('h2', null, `🔥 リーチ ${reach.length}人`),
+      reach.length
+        ? h(
+            'div',
+            { class: 'chips' },
+            reach.map((r) => h('span', { class: 'chip reach' }, mark(r.id, r.name), r.lines > 1 ? ` ×${r.lines}` : '')),
+          )
+        : h('p', { class: 'muted' }, 'まだリーチの人はいません'),
+    );
+  }
+
+  function celebrate(text) {
+    Party.fanfare();
+    Party.vibrate([120, 60, 120, 60, 240]);
+    const banner = h('div', { class: 'celebrate', role: 'alert' }, text);
+    document.body.append(banner);
+    setTimeout(() => banner.remove(), 3500);
+  }
+
+  // ---------------------------------------------------------------
+  // 部屋なし（この端末だけ）
+  // ---------------------------------------------------------------
+  function renderLocal(root) {
+    let drawn = Party.store.get('bingo.drawn', []);
+    if (!Array.isArray(drawn)) drawn = [];
+    drawn = drawn.filter((n) => Number.isInteger(n) && n >= 1 && n <= 75);
+    let rolling = false;
+    const save = () => Party.store.set('bingo.drawn', drawn);
+
+    const ball = createBall();
+    const board = createBoard();
+    const countEl = h('div', { class: 'muted center' });
+    const recentEl = h('div', { class: 'bingo-recent' });
+    const speak = speakToggle('bingo.speak', true);
+    const drawBtn = h('button', { type: 'button', class: 'btn primary big', onclick: draw }, '次の番号');
+    const undoBtn = h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn small ghost',
+        onclick() {
+          if (!drawn.length) return;
+          const n = drawn[drawn.length - 1];
+          if (!confirm(`最後の番号（${letterOf(n)}${n}）を取り消しますか？`)) return;
+          drawn.pop();
+          save();
+          render();
+        },
+      },
+      '1つ戻す',
+    );
+
+    function render() {
+      board.update(drawn);
+      countEl.textContent = `${drawn.length} / 75`;
+      recentChips(recentEl, drawn);
+      drawBtn.disabled = drawn.length >= 75 || rolling;
+      undoBtn.disabled = !drawn.length || rolling;
+      if (!rolling) ball.show(drawn[drawn.length - 1]);
+    }
+
+    function draw() {
+      if (rolling) return;
+      const remaining = [];
+      for (let n = 1; n <= 75; n++) if (!drawn.includes(n)) remaining.push(n);
+      if (!remaining.length) return;
+      Party.unlockAudio();
+      rolling = true;
+      render();
+      const n = remaining[Party.randInt(remaining.length)];
+      ball.roll(remaining, n, () => {
+        drawn.push(n);
+        save();
+        rolling = false;
+        render();
+        if (speak.on) announce(n);
+      });
+    }
+
+    root.append(
+      h('div', { class: 'card center-col' }, ball.el, countEl, h('div', { class: 'row center' }, drawBtn), recentEl),
+      h('div', { class: 'card' }, board.el),
+      h(
+        'div',
+        { class: 'row between wrap' },
+        speak.el,
+        h(
+          'div',
+          { class: 'row' },
+          undoBtn,
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'btn small ghost danger',
+              onclick() {
+                if (!drawn.length || !confirm('ビンゴをリセットしますか？')) return;
+                drawn = [];
+                save();
+                render();
+              },
+            },
+            'リセット',
+          ),
+        ),
+      ),
+      h('p', { class: 'muted small center' }, 'ホームで「部屋」を作ると、参加者のスマホにビンゴカードを配れます'),
+    );
+    render();
+
+    return () => {
+      ball.stop();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+    };
+  }
+
+  // ---------------------------------------------------------------
+  // 部屋の主催者
+  // ---------------------------------------------------------------
+  function renderHost(root) {
+    const room = Party.room;
+    let rolling = false;
+
+    const ball = createBall();
+    const board = createBoard();
+    const countEl = h('div', { class: 'muted center' });
+    const recentEl = h('div', { class: 'bingo-recent' });
+    const standingsEl = h('div', { class: 'card standings' });
+    const speak = speakToggle('bingo.speak', true);
+    const drawBtn = h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn primary big',
+        onclick() {
+          Party.unlockAudio();
+          if (room.send({ t: 'bingo.draw' })) drawBtn.disabled = true;
+        },
+      },
+      '次の番号',
+    );
+    const undoBtn = h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn small ghost',
+        onclick() {
+          const drawn = room.room?.bingo.drawn || [];
+          if (!drawn.length) return;
+          const n = drawn[drawn.length - 1];
+          if (confirm(`最後の番号（${letterOf(n)}${n}）を取り消しますか？\n参加者のカードからも印が消えます`)) room.send({ t: 'bingo.undo' });
+        },
+      },
+      '1つ戻す',
+    );
+    const resetBtn = h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn small ghost danger',
+        onclick() {
+          if (confirm('新しいゲームを始めますか？\n番号をリセットし、参加者全員に新しいカードを配ります')) room.send({ t: 'bingo.reset' });
+        },
+      },
+      '新しいゲーム',
+    );
+
+    function render(r) {
+      if (!r) {
+        countEl.textContent = '接続中…';
+        drawBtn.disabled = true;
+        return;
+      }
+      const all = r.bingo.drawn;
+      const drawn = rolling ? all.slice(0, -1) : all;
+      board.update(drawn);
+      countEl.textContent = `${drawn.length} / 75`;
+      recentChips(recentEl, drawn);
+      drawBtn.disabled = rolling || all.length >= 75 || room.status !== 'open';
+      undoBtn.disabled = rolling || !all.length;
+      if (!rolling) ball.show(drawn[drawn.length - 1]);
+      standings(standingsEl, r.bingo, null);
+    }
+
+    room.on((r, ev) => {
+      if (ev?.type === 'bingo.draw') {
+        rolling = true;
+        render(r);
+        const drawnSet = new Set(r.bingo.drawn);
+        const pool = [];
+        for (let n = 1; n <= 75; n++) if (!drawnSet.has(n)) pool.push(n);
+        ball.roll(pool, ev.n, () => {
+          rolling = false;
+          render(room.room);
+          if (speak.on) announce(ev.n);
+          if (ev.newBingo?.length) celebrate(`🎉 ビンゴ！ ${ev.newBingo.join('、')}`);
+          else if (ev.newReach?.length) Party.toast(`🔥 リーチ: ${ev.newReach.join('、')}`);
+        });
+        return;
+      }
+      if (ev?.type === 'bingo.reset') Party.toast('新しいゲームを始めました');
+      render(r);
+    });
+
+    root.append(
+      h('div', { class: 'card center-col' }, ball.el, countEl, h('div', { class: 'row center' }, drawBtn), recentEl),
+      standingsEl,
+      h('div', { class: 'card' }, board.el),
+      h('div', { class: 'row between wrap' }, speak.el, h('div', { class: 'row' }, undoBtn, resetBtn)),
+    );
+    render(room.room);
+
+    return () => {
+      ball.stop();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+    };
+  }
+
+  // ---------------------------------------------------------------
+  // 部屋の参加者
+  // ---------------------------------------------------------------
+  function renderGuest(root) {
+    const room = Party.room;
+    let rolling = false;
+    let wasBingo = null;
+    let wasReach = null;
+
+    const ball = createBall(true);
+    const countEl = h('div', { class: 'muted small' });
+    const statusEl = h('div', { class: 'my-status' });
+    const cardEl = h('div', { class: 'bingo-card' });
+    const recentEl = h('div', { class: 'bingo-recent' });
+    const standingsEl = h('div', { class: 'card standings' });
+    const speak = speakToggle('bingo.speakGuest', false);
+
+    function render(r, flashNumber) {
+      const card = room.you?.card;
+      if (!r || !card) {
+        cardEl.replaceChildren(h('p', { class: 'muted center' }, r ? 'カードを準備しています…' : '接続中…'));
+        return;
+      }
+      const all = r.bingo.drawn;
+      const drawn = rolling ? all.slice(0, -1) : all;
+      const set = new Set(drawn);
+      const last = drawn[drawn.length - 1];
+
+      cardEl.replaceChildren(
+        ...LETTERS.map((l) => h('div', { class: 'bc-head', 'data-letter': l }, l)),
+        ...card.map((n) => {
+          const free = n === 0;
+          const hit = free || set.has(n);
+          const cls = ['bc-cell', hit ? 'hit' : '', free ? 'free' : '', n === last ? 'last' : '', n === flashNumber ? 'flash' : ''].join(' ');
+          return h('div', { class: cls }, free ? 'FREE' : String(n));
+        }),
+      );
+      countEl.textContent = `${drawn.length} / 75`;
+      recentChips(recentEl, drawn);
+      if (!rolling) ball.show(last);
+
+      const myId = room.you.id;
+      const isBingo = r.bingo.winners.some((w) => w.id === myId);
+      const reach = r.bingo.reach.find((x) => x.id === myId);
+      const win = r.bingo.winners.find((w) => w.id === myId);
+      statusEl.className = `my-status${isBingo ? ' bingo' : reach ? ' reach' : ''}`;
+      statusEl.textContent = isBingo ? `🎉 ビンゴ！（${win.rank}位）` : reach ? `🔥 リーチ！${reach.lines > 1 ? ` ×${reach.lines}` : ''}` : '';
+      standings(standingsEl, r.bingo, myId);
+
+      if (!rolling) {
+        if (wasBingo === false && isBingo) celebrate('🎉 ビンゴ！ 主催者に知らせましょう');
+        else if (wasReach === false && reach && !isBingo) {
+          Party.vibrate([80, 40, 80]);
+          Party.toast('🔥 リーチ！');
+        }
+        wasBingo = isBingo;
+        wasReach = !!reach;
+      }
+    }
+
+    room.on((r, ev) => {
+      if (ev?.type === 'bingo.draw') {
+        rolling = true;
+        render(r);
+        const onCard = room.you?.card?.includes(ev.n);
+        ball.roll(
+          [],
+          ev.n,
+          () => {
+            rolling = false;
+            render(room.room, onCard ? ev.n : null);
+            if (onCard) Party.vibrate(60);
+            if (speak.on) announce(ev.n);
+          },
+          10,
+        );
+        return;
+      }
+      if (ev?.type === 'bingo.reset') {
+        wasBingo = wasReach = null;
+        Party.toast('新しいゲーム！ カードが配り直されました');
+      }
+      render(r);
+    });
+
+    root.append(
+      h('div', { class: 'guest-top' }, h('div', { class: 'center-col' }, ball.el, countEl), statusEl),
+      h('div', { class: 'card' }, cardEl, recentEl),
+      standingsEl,
+      h('div', { class: 'row center' }, speak.el),
+    );
+    render(room.room);
+    wasBingo = room.room && room.you ? room.room.bingo.winners.some((w) => w.id === room.you.id) : null;
+
+    return () => {
+      ball.stop();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+    };
+  }
+
+  Party.register({
+    id: 'bingo',
+    name: 'ビンゴ',
+    icon: '🅱️',
+    desc: '1〜75の抽選マシン（読み上げ対応）',
+    room: true,
+    render(root) {
+      if (!Party.room.active) return renderLocal(root);
+      return Party.room.isHost ? renderHost(root) : renderGuest(root);
+    },
+  });
+})();

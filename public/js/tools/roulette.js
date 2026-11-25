@@ -5,8 +5,13 @@ Party.register({
   name: 'ルーレット',
   icon: '🎯',
   desc: 'メンバーから1人を抽選',
+  room: true,
   render(root) {
     const { h } = Party;
+    const room = Party.room;
+    const inRoom = room.active;
+    const isGuest = inRoom && !room.isHost;
+    let lastResultId = inRoom ? room.room?.results.roulette?.id ?? 0 : 0;
     const TAU = Math.PI * 2;
     const POINTER = Math.PI * 1.5; // 真上
     const SIZE = 600;
@@ -125,6 +130,13 @@ Party.register({
 
     function update() {
       if (spinning) return;
+      if (isGuest) {
+        const res = room.room?.results.roulette;
+        items = res ? res.items : [];
+        draw();
+        info.textContent = room.room ? (res ? '' : '主催者がルーレットを回すのを待っています') : '接続中…';
+        return;
+      }
       items = candidates();
       draw();
       resetBtn.hidden = excluded.size === 0 && !pendingExclude;
@@ -149,16 +161,31 @@ Party.register({
       update();
       if (items.length < 2) return;
 
+      const params = {
+        items: items.slice(),
+        target: Party.randInt(items.length),
+        offset: 0.15 + Math.random() * 0.7,
+        duration: 4200 + Math.random() * 1200,
+      };
+      if (inRoom) {
+        // 結果は部屋全員に配信され、全員の画面で同じように回る
+        if (room.send({ t: 'result', kind: 'roulette', ...params })) spinBtn.disabled = true;
+        return;
+      }
+      animate(params);
+    }
+
+    function animate({ items: list, target, offset: frac, duration }) {
+      cancelAnimationFrame(raf);
+      items = list;
       const n = items.length;
       const seg = TAU / n;
-      const target = Party.randInt(n);
-      const offset = (target + 0.15 + Math.random() * 0.7) * seg;
+      const offset = (target + frac) * seg;
       rotation = mod(rotation, TAU);
       const start = rotation;
       let end = POINTER - offset;
       while (end < start + TAU * 6) end += TAU;
 
-      const duration = 4200 + Math.random() * 1200;
       const t0 = performance.now();
       let lastIdx = indexAt(rotation, n);
       spinning = true;
@@ -187,13 +214,17 @@ Party.register({
         result.classList.add('pop');
         Party.fanfare();
         Party.vibrate([60, 40, 60]);
-        if (removeChk.checked) pendingExclude = winner;
+        if (!isGuest && removeChk.checked) pendingExclude = winner;
         update();
       };
       raf = requestAnimationFrame(frame);
     }
 
-    root.append(
+    if (isGuest) {
+      root.append(h('div', { class: 'wheel-wrap' }, canvas), result, info);
+      const res = room.room?.results.roulette;
+      if (res) result.textContent = `🎉 ${res.winner}`;
+    } else root.append(
       h('div', { class: 'wheel-wrap' }, canvas),
       result,
       h('div', { class: 'row center' }, spinBtn),
@@ -208,6 +239,22 @@ Party.register({
     );
 
     Party.members.onChange(update);
+    if (inRoom) {
+      room.on((r, ev) => {
+        const res = r?.results.roulette;
+        if (ev?.type === 'result' && ev.kind === 'roulette' && res && res.id !== lastResultId) {
+          lastResultId = res.id;
+          Party.unlockAudio();
+          animate(res);
+          return;
+        }
+        if (!spinning) {
+          update();
+          if (isGuest && res && !result.textContent) result.textContent = `🎉 ${res.winner}`;
+        }
+        if (!isGuest && !spinning && room.status === 'open') spinBtn.disabled = items.length < 2;
+      });
+    }
     update();
 
     return () => cancelAnimationFrame(raf);
