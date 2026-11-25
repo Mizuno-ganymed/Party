@@ -1324,3 +1324,109 @@ button.bc-cell.free {
   background: var(--accent-2);
   color: #222;
 }
+
+/* ---------- ホーム画面に追加 ---------- */
+.install-text .small {
+  display: block;
+}
+
+.home-footer {
+  margin-top: 24px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.5);
+  animation: fade-in 0.15s ease-out;
+}
+
+@media (min-width: 600px) {
+  .modal-overlay {
+    align-items: center;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow);
+  animation: rise 0.2s ease-out;
+}
+
+.guide-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.guide-block h3,
+.guide-block p {
+  margin: 0;
+}
+
+.guide-block .btn {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+.guide-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guide-steps li::marker {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.guide-others summary {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.guide-others[open] summary {
+  margin-bottom: 8px;
+}
+
+.guide-others .guide-block + .guide-block {
+  margin-top: 8px;
+}
+
+.install-banner {
+  position: relative;
+  padding-right: 40px;
+}
+
+.install-banner > .chip-x {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}

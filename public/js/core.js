@@ -405,9 +405,9 @@
     /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   window.addEventListener('beforeinstallprompt', (e) => {
+    // ボタンを押したときにこのイベントでインストール画面を開く
     e.preventDefault();
     installPrompt = e;
-    if (!location.hash.replace(/^#\/?/, '')) route(); // ホーム表示中ならボタンを出す
   });
   window.addEventListener('appinstalled', () => {
     installPrompt = null;
@@ -421,36 +421,139 @@
     });
   }
 
+  /** 今の端末・ブラウザの種類 */
+  function detectBrowser() {
+    const ua = navigator.userAgent;
+    if (/\bLine\//i.test(ua)) return 'line';
+    if (/Instagram|FBAN|FBAV|FB_IAB|Twitter|MicroMessenger|KAKAOTALK|YJApp/i.test(ua)) return 'inapp';
+    if (isIOS()) return /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua) ? 'ios-other' : 'ios-safari';
+    if (/Android/i.test(ua)) return /SamsungBrowser/i.test(ua) ? 'samsung' : 'android';
+    return 'desktop';
+  }
+
+  const SHARE_ICON = '□↑';
+  const GUIDES = {
+    'ios-safari': {
+      title: 'iPhone / iPad（Safari）',
+      steps: [
+        `画面下（iPad は右上）の 共有ボタン［${SHARE_ICON}］をタップ`,
+        'メニューを下にスクロールして「ホーム画面に追加」をタップ',
+        '右上の「追加」をタップ',
+      ],
+      note: '「ホーム画面に追加」が見当たらないときは、メニューの一番下の「アクションを編集」から追加できます。',
+    },
+    'ios-other': {
+      title: 'iPhone / iPad（Chrome など）',
+      steps: [`アドレスバーの右にある 共有ボタン［${SHARE_ICON}］をタップ`, '「ホーム画面に追加」をタップ', '「追加」をタップ'],
+      note: 'うまくいかないときは、Safari でこのページを開いてから追加してください。',
+    },
+    android: {
+      title: 'Android（Chrome）',
+      steps: ['右上の ⋮（メニュー）をタップ', '「ホーム画面に追加」または「アプリをインストール」をタップ', '「インストール」または「追加」をタップ'],
+    },
+    samsung: {
+      title: 'Android（Samsung Internet）',
+      steps: ['画面下の ≡（メニュー）をタップ', '「ページを追加」→「ホーム画面」をタップ', '「追加」をタップ'],
+    },
+    desktop: {
+      title: 'パソコン（Chrome / Edge）',
+      steps: ['アドレスバーの右にある インストールアイコン（⊕ や 🖥）をクリック', '「インストール」をクリック'],
+      note: 'Safari（Mac）は メニューの「ファイル」→「Dock に追加」です。',
+    },
+  };
+
+  /** ホーム画面に追加する方法の案内を表示 */
+  function showInstallGuide() {
+    const kind = detectBrowser();
+    const close = () => overlay.remove();
+    const stepsOf = (g) =>
+      h(
+        'div',
+        { class: 'guide-block' },
+        h('h3', null, g.title),
+        h('ol', { class: 'guide-steps' }, g.steps.map((s) => h('li', null, s))),
+        g.note ? h('p', { class: 'muted small' }, g.note) : null,
+      );
+
+    let main;
+    if (kind === 'line' || kind === 'inapp') {
+      const url = new URL(location.href);
+      if (kind === 'line') url.searchParams.set('openExternalBrowser', '1');
+      main = h(
+        'div',
+        { class: 'guide-block' },
+        h('h3', null, kind === 'line' ? 'LINE の中で開いています' : 'アプリの中で開いています'),
+        h('p', null, 'この画面からはホーム画面に追加できません。Safari（iPhone）または Chrome（Android）で開いてから追加してください。'),
+        kind === 'line'
+          ? h('a', { class: 'btn primary', href: url.href }, 'Safari / Chrome で開く')
+          : h('p', { class: 'muted small' }, '画面の右上（または右下）のメニューから「ブラウザで開く」を選んでください。'),
+        h('button', { type: 'button', class: 'btn small ghost', onclick: () => copy(location.origin + location.pathname) }, '🔗 URL をコピー'),
+      );
+    } else {
+      main = stepsOf(GUIDES[kind]);
+    }
+    const others = Object.entries(GUIDES)
+      .filter(([k]) => k !== kind)
+      .map(([, g]) => stepsOf(g));
+
+    const overlay = h(
+      'div',
+      {
+        class: 'modal-overlay',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': 'ホーム画面に追加する方法',
+        onclick(e) {
+          if (e.target === overlay) close();
+        },
+      },
+      h(
+        'div',
+        { class: 'modal' },
+        h(
+          'div',
+          { class: 'row between' },
+          h('strong', null, '📲 ホーム画面に追加する方法'),
+          h('button', { type: 'button', class: 'chip-x', 'aria-label': '閉じる', onclick: close }, '×'),
+        ),
+        h('p', { class: 'muted small' }, '追加すると、アイコンからすぐ開けて、電波がなくても使えます。'),
+        main,
+        h('details', { class: 'guide-others' }, h('summary', null, 'ほかの端末・ブラウザの場合'), others),
+        h('div', { class: 'row center' }, h('button', { type: 'button', class: 'btn', onclick: close }, '閉じる')),
+      ),
+    );
+    document.body.append(overlay);
+  }
+
+  /** 追加ボタンの動作: 可能ならインストール画面、無理なら手順を表示 */
+  async function install() {
+    if (installPrompt) {
+      const p = installPrompt;
+      installPrompt = null;
+      try {
+        await p.prompt();
+        await p.userChoice;
+        return;
+      } catch {
+        /* 手順の表示に切り替える */
+      }
+    }
+    showInstallGuide();
+  }
+
   /** ホームに出す「アプリとして追加」案内 */
   function installBanner() {
     if (isStandalone() || store.get('installDismissed', false)) return null;
-    let body;
-    if (installPrompt) {
-      body = h(
-        'button',
-        {
-          type: 'button',
-          class: 'btn primary',
-          async onclick() {
-            const p = installPrompt;
-            installPrompt = null;
-            p.prompt();
-            await p.userChoice.catch(() => null);
-            route();
-          },
-        },
-        '📲 ホーム画面に追加',
-      );
-    } else if (isIOS()) {
-      body = h('span', null, 'Safari の共有ボタン（□↑）→「ホーム画面に追加」で、アプリのように使えます');
-    } else {
-      return null;
-    }
+    const kind = detectBrowser();
+    const sub =
+      kind === 'line' || kind === 'inapp'
+        ? 'LINE などのアプリ内では追加できません。ボタンから Safari / Chrome で開けます'
+        : 'アイコンからすぐ開けて、電波がなくても使えます';
     const banner = h(
       'div',
       { class: 'install-banner' },
-      h('span', { class: 'install-text' }, h('strong', null, 'アプリとして使う'), ' オフラインでも動きます'),
-      body,
+      h('span', { class: 'install-text' }, h('strong', null, 'アプリとして使う'), h('span', { class: 'muted small' }, sub)),
+      h('button', { type: 'button', class: 'btn primary', onclick: install }, '📲 ホーム画面に追加'),
       h(
         'button',
         {
@@ -492,6 +595,9 @@
           ),
         ),
       ),
+      isStandalone()
+        ? null
+        : h('div', { class: 'row center home-footer' }, h('button', { type: 'button', class: 'btn small ghost', onclick: install }, '📲 ホーム画面に追加する方法')),
     ]);
   }
 
