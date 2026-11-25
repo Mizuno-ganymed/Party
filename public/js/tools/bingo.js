@@ -241,7 +241,9 @@
     // 景品（この端末に保存）
     const loadPrizes = () => {
       const p = Party.store.get('bingo.prizes', null);
-      return p && Array.isArray(p.items) ? { items: p.items, awards: Array.isArray(p.awards) ? p.awards : [] } : { items: [], awards: [] };
+      const base = { items: [], awards: [], mode: 'all', size: 5 };
+      if (!p || !Array.isArray(p.items)) return base;
+      return { ...base, ...p, awards: Array.isArray(p.awards) ? p.awards : [], mode: p.mode === 'top' ? 'top' : 'all', size: Number(p.size) || 5 };
     };
     let prizes = loadPrizes();
     const savePrizes = () => Party.store.set('bingo.prizes', prizes);
@@ -252,12 +254,17 @@
         ...prizes,
         editable: true,
         onLoad(items) {
-          prizes = { items: items.map((it) => ({ name: it.name, total: it.count, left: it.count })), awards: [] };
+          prizes = { ...prizes, items: items.map((it) => ({ name: it.name, total: it.count, left: it.count })), awards: [] };
           savePrizes();
           renderPrizes();
         },
         onClear() {
-          prizes = { items: [], awards: [] };
+          prizes = { ...prizes, items: [], awards: [] };
+          savePrizes();
+          renderPrizes();
+        },
+        onMode(mode, size) {
+          prizes = { ...prizes, mode, size };
           savePrizes();
           renderPrizes();
         },
@@ -273,11 +280,11 @@
                   onclick() {
                     const name = prompt('当たった人の名前（省略できます）', '');
                     if (name == null) return;
-                    const spin = Party.prizes.pick(prizes.items);
+                    const spin = Party.prizes.pick(prizes.items, prizes.mode, prizes.size);
                     if (!spin) return;
                     Party.unlockAudio();
-                    const prize = spin.items[spin.target].name;
-                    prizes.items.find((it) => it.name === prize && it.left > 0).left -= 1;
+                    const prize = prizes.items[spin.index].name;
+                    prizes.items[spin.index].left -= 1;
                     const winner = name.trim().slice(0, 20) || 'あなた';
                     prizes.awards.push({ name: winner, prize });
                     savePrizes();
@@ -454,6 +461,7 @@
         editable: true,
         onLoad: (items) => room.send({ t: 'prize.set', items }),
         onClear: () => room.send({ t: 'prize.clear' }),
+        onMode: (mode, size) => room.send({ t: 'prize.mode', mode, size }),
       });
     }
 

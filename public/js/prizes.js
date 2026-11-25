@@ -44,17 +44,33 @@
     }
   }
 
-  /** 残っている景品から1つ選ぶ。items: [{ name, left }] */
-  function pick(items) {
-    const avail = items.filter((it) => it.left > 0);
-    const units = avail.reduce((s, it) => s + it.left, 0);
+  /**
+   * 各景品のうち、いまルーレットにのっている個数（サーバーの prizesOnWheel と同じ）
+   * all: 残っている全部 / top: 一覧の上から size 個分（当たったら次が補充される）
+   */
+  function onWheel(items, mode = 'all', size = 5) {
+    if (mode !== 'top') return items.map((it) => it.left);
+    let slots = size;
+    return items.map((it) => {
+      const n = Math.min(it.left, slots);
+      slots -= n;
+      return n;
+    });
+  }
+
+  /** ルーレットにのっている景品から1つ選ぶ → spin（index は items 内の位置） */
+  function pick(items, mode = 'all', size = 5) {
+    const counts = onWheel(items, mode, size);
+    const avail = items.map((it, i) => ({ name: it.name, n: counts[i], i })).filter((x) => x.n > 0);
+    const units = avail.reduce((s, x) => s + x.n, 0);
     if (!units) return null;
     let r = Party.randInt(units);
     let target = 0;
-    while (r >= avail[target].left) r -= avail[target++].left;
+    while (r >= avail[target].n) r -= avail[target++].n;
     return {
-      items: avail.map((it) => ({ name: it.name, left: it.left })),
+      items: avail.map((x) => ({ name: x.name, left: x.n })),
       target,
+      index: avail[target].i,
       offset: 0.15 + Math.random() * 0.7,
       duration: 5000,
     };
@@ -62,7 +78,7 @@
 
   // ---------- 一覧カード ----------
   /**
-   * opts: { items, awards, editable, youId, onLoad(items), onClear(), extra }
+   * opts: { items, awards, mode, size, editable, youId, onLoad(items), onClear(), onMode(mode, size), extra }
    */
   function card(opts) {
     const el = h('section', { class: 'card prize-card' });
@@ -70,28 +86,58 @@
     return el;
   }
 
-  function render(el, { items = [], awards = [], editable = false, youId = null, onLoad, onClear, extra = null }) {
+  function render(el, { items = [], awards = [], mode = 'all', size = 5, editable = false, youId = null, onLoad, onClear, onMode, extra = null }) {
     // 内容が変わっていなければ描き直さない（入力中の貼り付け欄を消さないため）
-    const key = JSON.stringify([items, awards, editable, youId]);
+    const key = JSON.stringify([items, awards, mode, size, editable, youId, !!extra]);
     if (el._prizeKey === key) return;
     el._prizeKey = key;
     const left = items.reduce((s, it) => s + it.left, 0);
     const total = items.reduce((s, it) => s + it.total, 0);
 
+    const counts = onWheel(items, mode, size);
     const list = items.length
       ? h(
           'ul',
           { class: 'prize-list' },
-          items.map((it) =>
+          items.map((it, i) =>
             h(
               'li',
-              { class: it.left ? '' : 'gone' },
+              { class: [it.left ? '' : 'gone', counts[i] ? 'on-wheel' : ''].join(' ') },
               h('span', { class: 'prize-name' }, it.name),
+              counts[i] ? h('span', { class: 'wheel-badge', title: 'いまルーレットにのっている数' }, `🎡 ${counts[i]}`) : null,
               h('span', { class: 'prize-count' }, `${it.left} / ${it.total}`),
             ),
           ),
         )
       : h('p', { class: 'muted small' }, editable ? 'まだ景品が登録されていません' : '景品はまだ登録されていません');
+
+    const modeText = mode === 'top' ? `ルーレット: 一覧の上から ${size}個（当たったら次の景品を補充）` : 'ルーレット: 残っている景品をすべてのせる';
+    let modeEl = items.length || editable ? h('p', { class: 'muted small prize-mode-text' }, '🎡 ', modeText) : null;
+    if (editable && onMode) {
+      modeEl = h(
+        'div',
+        { class: 'prize-mode' },
+        h('div', { class: 'field-label' }, 'ルーレットにのせる景品（主催者のみ設定）'),
+        Party.segmented(
+          [
+            ['all', 'すべてのせる'],
+            ['top', '上から順に'],
+          ],
+          mode,
+          (v) => onMode(v, size),
+        ),
+        mode === 'top'
+          ? h(
+              'div',
+              { class: 'row' },
+              h('span', null, '一覧の上から'),
+              Party.stepper({ value: size, min: 1, max: 20, label: 'ルーレットにのせる数', onChange: (v) => onMode('top', v) }),
+              h('span', null, '個'),
+            )
+          : null,
+        h('p', { class: 'muted small' }, mode === 'top' ? '当選者が出るたびに、一覧の次の景品が1個ずつ補充されます' : '残っている景品をすべてのせます（個数が多いほど当たりやすい）'),
+      );
+    }
 
     const awardList = awards.length
       ? h(
@@ -181,6 +227,7 @@
     el.replaceChildren(
       ...[
         h('h2', null, '🎁 景品', items.length ? h('span', { class: 'muted' }, ` 残り ${left} / ${total}個`) : null),
+        modeEl,
         list,
         extra,
         awardList,
@@ -309,5 +356,5 @@
     return api;
   }
 
-  Party.prizes = { parse, readFile, pick, card, render, showSpin };
+  Party.prizes = { parse, readFile, onWheel, pick, card, render, showSpin };
 })();

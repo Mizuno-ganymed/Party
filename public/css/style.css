@@ -1626,3 +1626,41 @@ button.bc-cell.free {
   white-space: pre-line;
   line-height: 1.3;
 }
+
+/* ---------- 景品: ルーレットにのせる方式 ---------- */
+.prize-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.prize-mode p,
+.prize-mode-text {
+  margin: 0;
+}
+
+.prize-mode .stepper-input {
+  width: 64px;
+}
+
+.prize-list li {
+  align-items: center;
+}
+
+.prize-list li.on-wheel {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.wheel-badge {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}

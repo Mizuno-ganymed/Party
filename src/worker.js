@@ -54,6 +54,23 @@ function json(data, status = 200) {
   });
 }
 
+// ---------- 景品 ----------
+const PRIZE_MODES = ['all', 'top'];
+
+/**
+ * 各景品のうち、いまルーレットにのっている個数
+ * all: 残っている全部 / top: 一覧の上から size 個分（当たったら次が補充される）
+ */
+function prizesOnWheel(items, mode, size) {
+  if (mode !== 'top') return items.map((it) => it.left);
+  let slots = size;
+  return items.map((it) => {
+    const n = Math.min(it.left, slots);
+    slots -= n;
+    return n;
+  });
+}
+
 // ---------- ビンゴ ----------
 const LINES = (() => {
   const lines = [];
@@ -356,36 +373,47 @@ export class Room extends DurableObject {
           .map((it) => ({ name: cleanText(it?.name, 40), total: Math.round(Number(it?.count)) }))
           .filter((it) => it.name && Number.isFinite(it.total) && it.total >= 1)
           .map((it) => ({ name: it.name, total: Math.min(999, it.total), left: Math.min(999, it.total) }));
-        s.prizes = { items, awards: [] };
+        const { mode, size } = this.prizes();
+        s.prizes = { items, awards: [], mode, size };
         return { type: 'prize.list' };
       }
 
       case 'prize.clear': {
-        s.prizes = { items: [], awards: [] };
+        const { mode, size } = this.prizes();
+        s.prizes = { items: [], awards: [], mode, size };
+        return { type: 'prize.list' };
+      }
+
+      case 'prize.mode': {
+        const p = this.prizes();
+        if (!PRIZE_MODES.includes(msg.mode)) return undefined;
+        p.mode = msg.mode;
+        p.size = Math.max(1, Math.min(20, Math.round(Number(msg.size)) || 5));
         return { type: 'prize.list' };
       }
 
       case 'prize.spin': {
-        // ビンゴした人に、残っている景品からルーレットで1つ当てる（個数が多いほど当たりやすい）
+        // ビンゴした人に、ルーレットにのっている景品から1つ当てる（個数が多いほど当たりやすい）
         const p = this.prizes();
         const cid = String(msg.cid || '');
         const b = s.bingo;
         if (!b.winners.some((w) => w.cid === cid)) return undefined;
         if (p.awards.some((a) => a.cid === cid && a.round === b.round)) return undefined;
-        const avail = p.items.filter((it) => it.left > 0);
-        const units = avail.reduce((sum, it) => sum + it.left, 0);
+        const counts = prizesOnWheel(p.items, p.mode, p.size);
+        const avail = p.items.map((it, i) => ({ item: it, n: counts[i] })).filter((x) => x.n > 0);
+        const units = avail.reduce((sum, x) => sum + x.n, 0);
         if (!units) return undefined;
         let r = randInt(units);
         let target = 0;
-        while (r >= avail[target].left) r -= avail[target++].left;
+        while (r >= avail[target].n) r -= avail[target++].n;
         const spin = {
-          items: avail.map((it) => ({ name: it.name, left: it.left })),
+          items: avail.map((x) => ({ name: x.item.name, left: x.n })),
           target,
           offset: 0.15 + (randInt(700) / 1000),
           duration: 5000,
         };
-        const prize = avail[target].name;
-        avail[target].left -= 1;
+        const prize = avail[target].item.name;
+        avail[target].item.left -= 1;
         const winner = this.nameOf(cid);
         p.awards.push({ cid, name: winner, prize, round: b.round, at: Date.now() });
         return { type: 'prize.spin', winner, cid, prize, spin };
@@ -449,7 +477,10 @@ export class Room extends DurableObject {
 
   prizes() {
     if (!this.state.prizes) this.state.prizes = { items: [], awards: [] };
-    return this.state.prizes;
+    const p = this.state.prizes;
+    if (!PRIZE_MODES.includes(p.mode)) p.mode = 'all';
+    if (!Number.isInteger(p.size)) p.size = 5;
+    return p;
   }
 
   nameOf(cid) {
@@ -498,6 +529,8 @@ export class Room extends DurableObject {
       scoreboard: s.scoreboard,
       prizes: {
         items: this.prizes().items,
+        mode: this.prizes().mode,
+        size: this.prizes().size,
         awards: this.prizes().awards.map((a) => ({ id: a.cid, name: a.name, prize: a.prize, round: a.round })),
       },
       results: s.results,
