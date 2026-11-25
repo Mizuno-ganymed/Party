@@ -1242,3 +1242,85 @@ p.small {
 .order-list.no-anim li {
   animation: none;
 }
+
+/* ---------- ビンゴ: タップで印 ---------- */
+button.bc-cell {
+  appearance: none;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  touch-action: manipulation;
+  transition: background 0.15s, transform 0.08s;
+}
+
+button.bc-cell:active {
+  transform: scale(0.93);
+}
+
+button.bc-cell.hit {
+  color: #fff;
+}
+
+button.bc-cell.free {
+  cursor: default;
+}
+
+.bc-cell.shake {
+  animation: cell-shake 0.35s;
+}
+
+@keyframes cell-shake {
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+/* ---------- ビンゴ: これまでに出た番号 ---------- */
+.card.bingo-history {
+  display: block;
+}
+
+.bingo-history summary {
+  font-weight: bold;
+}
+
+.bingo-history h3 {
+  margin: 16px 0 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.history-order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-order li {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-order li[value]::before {
+  content: attr(value) '.';
+  color: var(--muted);
+  font-size: 0.75rem;
+  min-width: 1.6em;
+  text-align: right;
+}
+
+.history-order li:first-child .bingo-chip {
+  background: var(--accent-2);
+  color: #222;
+}
