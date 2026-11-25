@@ -68,6 +68,14 @@ npm run dev
 
 Cloudflare の管理画面で「Workers & Pages」→「作成」→「リポジトリをインポート」からこのリポジトリを選ぶと、`main` へのプッシュごとに `npx wrangler deploy` が実行されます。Worker 名は `party-tools`（`wrangler.jsonc` の `name`）にしてください。
 
+| 設定（Worker の「設定」→「ビルド」） | 値 |
+| --- | --- |
+| 本番ブランチ（ブランチの管理） | `main` |
+| ビルドコマンド | 空欄 |
+| デプロイコマンド | `npx wrangler deploy` |
+
+本番ブランチが `main` 以外になっていると、`main` にプッシュしても公開されません。
+
 部屋の状態は Durable Objects（SQLite）に保存されます。無料プランで利用できます。
 
 > PWA の機能（ホーム画面への追加・オフライン）は HTTPS か `localhost` で開いたときだけ有効です。`index.html` を直接開いた場合は通常のWebページとして動きます。
