@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16131f">
+  <meta name="description" content="ルーレット・チーム分け・タイマー・ビンゴなど、パーティで使える便利ツール集">
+  <title>パーティツール</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎉</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <a class="back-btn" href="#/" aria-label="ホームへ戻る" hidden>‹</a>
+    <h1 class="app-title"><a href="#/">🎉 パーティツール</a></h1>
+    <button class="sound-btn" type="button" aria-label="サウンド切替"></button>
+  </header>
+
+  <main id="app" class="app-main"></main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/core.js" defer></script>
+  <script src="js/tools/roulette.js" defer></script>
+  <script src="js/tools/teams.js" defer></script>
+  <script src="js/tools/order.js" defer></script>
+  <script src="js/tools/dice.js" defer></script>
+  <script src="js/tools/timer.js" defer></script>
+  <script src="js/tools/scoreboard.js" defer></script>
+  <script src="js/tools/bingo.js" defer></script>
+  <script src="js/tools/warikan.js" defer></script>
+</body>
+</html>
