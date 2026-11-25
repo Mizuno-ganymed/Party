@@ -83,15 +83,43 @@
     return { el, update };
   }
 
-  function recentChips(el, drawn) {
-    el.replaceChildren(
-      ...drawn
-        .slice(-8)
-        .reverse()
-        .slice(1)
-        .map((n) => h('span', { class: 'bingo-chip', 'data-letter': letterOf(n) }, `${letterOf(n)}${n}`)),
-    );
+  /** 1列あたりの数・片側の行数（片側 4×10 = 40個、左右で 80個 > 74個） */
+  const SIDE_COLS = 4;
+  const SIDE_CAP = 40;
+
+  /**
+   * 現在の番号（大きいボール）と、過去の番号を左右に小さく並べる表示
+   * 左側: ボールのすぐ左から外側（画面の端）へ向かって並べ、端まで来たら下の行へ
+   * 左側が埋まったら、右側にボールのすぐ右から同じように並べる
+   */
+  function createStage(small = false) {
+    const ball = createBall(small);
+    const left = h('div', { class: 'stage-side left', 'aria-label': 'これまでに出た番号' });
+    const right = h('div', { class: 'stage-side right' });
+    const el = h('div', { class: `bingo-stage${small ? ' small' : ''}` }, left, ball.el, right);
+    let lastKey = '';
+    const chip = (n, i) => h('span', { class: 'stage-chip', 'data-letter': letterOf(n), title: `${i + 1}番目` }, String(n));
+    /** prev: 今ボールに出ている番号より前に出た番号（出た順） */
+    const update = (prev) => {
+      const key = prev.join(',');
+      if (key === lastKey) return;
+      lastKey = key;
+      left.replaceChildren(...prev.slice(0, SIDE_CAP).map((n, i) => chip(n, i)));
+      right.replaceChildren(...prev.slice(SIDE_CAP).map((n, i) => chip(n, i + SIDE_CAP)));
+    };
+    return { el, ball, update };
   }
+
+  /** 1〜75 のうち、まだ出ていない番号 */
+  const remainingOf = (drawn) => {
+    const set = new Set(drawn);
+    const pool = [];
+    for (let n = 1; n <= 75; n++) if (!set.has(n)) pool.push(n);
+    return pool;
+  };
+
+  /** ボールに出ている番号より前の番号。演出中は直前の番号もすでに「過去」に移す */
+  const previousOf = (visible, rolling) => (rolling ? visible : visible.slice(0, -1));
 
   function speakToggle(key, fallback) {
     let on = Party.store.get(key, fallback);
@@ -187,10 +215,10 @@
     let rolling = false;
     const save = () => Party.store.set('bingo.drawn', drawn);
 
-    const ball = createBall();
+    const stage = createStage();
+    const ball = stage.ball;
     const board = createBoard();
     const countEl = h('div', { class: 'muted center' });
-    const recentEl = h('div', { class: 'bingo-recent' });
     const speak = speakToggle('bingo.speak', true);
     const history = createHistory({ withBoard: false });
     const drawBtn = h('button', { type: 'button', class: 'btn primary big', onclick: draw }, '次の番号');
@@ -214,7 +242,7 @@
     function render() {
       board.update(drawn);
       countEl.textContent = `${drawn.length} / 75`;
-      recentChips(recentEl, drawn);
+      stage.update(previousOf(drawn, rolling));
       history.update(drawn);
       drawBtn.disabled = drawn.length >= 75 || rolling;
       undoBtn.disabled = !drawn.length || rolling;
@@ -240,7 +268,7 @@
     }
 
     root.append(
-      h('div', { class: 'card center-col' }, ball.el, countEl, h('div', { class: 'row center' }, drawBtn), recentEl),
+      h('div', { class: 'card center-col' }, stage.el, countEl, h('div', { class: 'row center' }, drawBtn)),
       h('div', { class: 'card' }, board.el),
       history.el,
       h(
@@ -284,10 +312,10 @@
     const room = Party.room;
     let rolling = false;
 
-    const ball = createBall();
+    const stage = createStage();
+    const ball = stage.ball;
     const board = createBoard();
     const countEl = h('div', { class: 'muted center' });
-    const recentEl = h('div', { class: 'bingo-recent' });
     const standingsEl = h('div', { class: 'card standings' });
     const history = createHistory({ withBoard: false });
     const speak = speakToggle('bingo.speak', true);
@@ -339,7 +367,7 @@
       const drawn = rolling ? all.slice(0, -1) : all;
       board.update(drawn);
       countEl.textContent = `${drawn.length} / 75`;
-      recentChips(recentEl, drawn);
+      stage.update(previousOf(drawn, rolling));
       drawBtn.disabled = rolling || all.length >= 75 || room.status !== 'open';
       undoBtn.disabled = rolling || !all.length;
       if (!rolling) ball.show(drawn[drawn.length - 1]);
@@ -351,10 +379,7 @@
       if (ev?.type === 'bingo.draw') {
         rolling = true;
         render(r);
-        const drawnSet = new Set(r.bingo.drawn);
-        const pool = [];
-        for (let n = 1; n <= 75; n++) if (!drawnSet.has(n)) pool.push(n);
-        ball.roll(pool, ev.n, () => {
+        ball.roll(remainingOf(r.bingo.drawn), ev.n, () => {
           rolling = false;
           render(room.room);
           if (speak.on) announce(ev.n);
@@ -370,7 +395,7 @@
     });
 
     root.append(
-      h('div', { class: 'card center-col' }, ball.el, countEl, h('div', { class: 'row center' }, drawBtn), recentEl),
+      h('div', { class: 'card center-col' }, stage.el, countEl, h('div', { class: 'row center' }, drawBtn)),
       standingsEl,
       h('div', { class: 'card' }, board.el),
       history.el,
@@ -396,11 +421,11 @@
     const cells = new Map(); // 番号 → マスの要素
     const pending = new Set(); // 送信済みでサーバーの反映待ちの印
 
-    const ball = createBall(true);
-    const countEl = h('div', { class: 'muted small' });
+    const stage = createStage(true);
+    const ball = stage.ball;
+    const countEl = h('div', { class: 'muted small center' });
     const statusEl = h('div', { class: 'my-status' });
     const cardEl = h('div', { class: 'bingo-card' });
-    const recentEl = h('div', { class: 'bingo-recent' });
     const history = createHistory();
     const standingsEl = h('div', { class: 'card standings' });
     const speak = speakToggle('bingo.speakGuest', false);
@@ -475,7 +500,7 @@
 
       const drawn = visibleDrawn();
       countEl.textContent = `${drawn.length} / 75`;
-      recentChips(recentEl, drawn);
+      stage.update(previousOf(drawn, rolling));
       history.update(drawn);
       if (!rolling) ball.show(drawn[drawn.length - 1]);
 
@@ -499,16 +524,11 @@
       if (ev?.type === 'bingo.draw') {
         rolling = true;
         render(r);
-        ball.roll(
-          [],
-          ev.n,
-          () => {
-            rolling = false;
-            render(room.room);
-            if (speak.on) announce(ev.n);
-          },
-          10,
-        );
+        ball.roll(remainingOf(r.bingo.drawn), ev.n, () => {
+          rolling = false;
+          render(room.room);
+          if (speak.on) announce(ev.n);
+        });
         return;
       }
       if (ev?.type === 'bingo.reset') {
@@ -523,13 +543,12 @@
     });
 
     root.append(
-      h('div', { class: 'guest-top' }, h('div', { class: 'center-col' }, ball.el, countEl), statusEl),
+      h('div', { class: 'guest-top' }, stage.el, countEl, statusEl),
       h(
         'div',
         { class: 'card' },
         h('p', { class: 'muted small center' }, '出た番号を見つけたら、カードのマスをタップして印をつけましょう'),
         cardEl,
-        recentEl,
       ),
       history.el,
       standingsEl,

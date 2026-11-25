@@ -1430,3 +1430,58 @@ button.bc-cell.free {
   top: 6px;
   right: 6px;
 }
+
+/* ---------- ビンゴ: 現在の番号と、左右に並ぶ過去の番号 ---------- */
+.bingo-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+}
+
+.bingo-stage .bingo-ball {
+  width: clamp(110px, 34vw, 160px);
+  height: clamp(110px, 34vw, 160px);
+}
+
+.bingo-stage.small .bingo-ball {
+  width: 96px;
+  height: 96px;
+}
+
+.stage-side {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  align-content: start;
+}
+
+/* 左側はボールのすぐ左から、画面の端へ向かって並べる */
+.stage-side.left {
+  direction: rtl;
+}
+
+.stage-chip {
+  direction: ltr;
+  display: grid;
+  place-items: center;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: var(--muted);
+}
+
+.stage-chip[data-letter='B'] { background: #4a90e2; }
+.stage-chip[data-letter='I'] { background: #e8457a; }
+.stage-chip[data-letter='N'] { background: #8a8a8a; }
+.stage-chip[data-letter='G'] { background: #2fb58c; }
+.stage-chip[data-letter='O'] { background: #e8a33a; color: #222; }
+
+.guest-top {
+  flex-direction: column;
+  gap: 6px;
+}
