@@ -8,7 +8,7 @@
  *
  * ファイルを追加・削除したら APP_FILES を更新し、VERSION を上げてください。
  */
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = `party-tools-${VERSION}`;
 
 const APP_FILES = [
@@ -18,6 +18,7 @@ const APP_FILES = [
   'js/core.js',
   'js/vendor/qrcode.js',
   'js/room.js',
+  'js/prizes.js',
   'js/tools/roulette.js',
   'js/tools/teams.js',
   'js/tools/order.js',

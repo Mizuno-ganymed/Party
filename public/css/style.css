@@ -1485,3 +1485,112 @@ button.bc-cell.free {
   flex-direction: column;
   gap: 6px;
 }
+
+/* ---------- 景品 ---------- */
+.prize-card h2 {
+  margin: 0;
+}
+
+.prize-card h3 {
+  margin: 4px 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.prize-list,
+.prize-awards ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prize-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.prize-list li.gone {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.prize-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.prize-count {
+  flex: none;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.prize-awards li.me {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.prize-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.prize-paste summary {
+  font-size: 0.9rem;
+}
+
+.prize-text {
+  width: 100%;
+  margin-top: 8px;
+  resize: vertical;
+  font-size: 16px;
+}
+
+.winners li {
+  margin: 4px 0;
+}
+
+.prize-btn {
+  margin-left: 8px;
+  padding: 4px 10px;
+}
+
+.won-prize {
+  margin-left: 8px;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+
+.prize-overlay {
+  align-items: center;
+}
+
+.prize-wheel {
+  width: min(78vw, 320px);
+  aspect-ratio: 1;
+}
+
+.prize-result {
+  min-height: 3.6rem;
+}
+
+.prize-result.pop {
+  animation: pop 0.5s ease-out;
+}
+
+.prize-won {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}

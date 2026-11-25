@@ -128,6 +128,8 @@ export default {
 export class Room extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
+    // 接続維持の ping はオブジェクトを起こさずに Cloudflare が自動で返す
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     this.state = null;
     this.hostToken = null;
     ctx.blockConcurrencyWhile(async () => {
@@ -148,6 +150,7 @@ export class Room extends DurableObject {
       bingo: { round: 1, drawn: [], cards: {}, marks: {}, winners: [] },
       scoreboard: { players: [] },
       results: {},
+      prizes: { items: [], awards: [] },
       timer: { status: 'idle', duration: 180, endAt: 0, remaining: 180000 },
       seq: 0,
     };
@@ -338,6 +341,48 @@ export class Room extends DurableObject {
         return { type: 'timer' };
       }
 
+      case 'prize.set': {
+        if (!Array.isArray(msg.items)) return undefined;
+        const items = msg.items
+          .slice(0, 100)
+          .map((it) => ({ name: cleanText(it?.name, 40), total: Math.round(Number(it?.count)) }))
+          .filter((it) => it.name && Number.isFinite(it.total) && it.total >= 1)
+          .map((it) => ({ name: it.name, total: Math.min(999, it.total), left: Math.min(999, it.total) }));
+        s.prizes = { items, awards: [] };
+        return { type: 'prize.list' };
+      }
+
+      case 'prize.clear': {
+        s.prizes = { items: [], awards: [] };
+        return { type: 'prize.list' };
+      }
+
+      case 'prize.spin': {
+        // ビンゴした人に、残っている景品からルーレットで1つ当てる（個数が多いほど当たりやすい）
+        const p = this.prizes();
+        const cid = String(msg.cid || '');
+        const b = s.bingo;
+        if (!b.winners.some((w) => w.cid === cid)) return undefined;
+        if (p.awards.some((a) => a.cid === cid && a.round === b.round)) return undefined;
+        const avail = p.items.filter((it) => it.left > 0);
+        const units = avail.reduce((sum, it) => sum + it.left, 0);
+        if (!units) return undefined;
+        let r = randInt(units);
+        let target = 0;
+        while (r >= avail[target].left) r -= avail[target++].left;
+        const spin = {
+          items: avail.map((it) => ({ name: it.name, left: it.left })),
+          target,
+          offset: 0.15 + (randInt(700) / 1000),
+          duration: 5000,
+        };
+        const prize = avail[target].name;
+        avail[target].left -= 1;
+        const winner = this.nameOf(cid);
+        p.awards.push({ cid, name: winner, prize, round: b.round, at: Date.now() });
+        return { type: 'prize.spin', winner, cid, prize, spin };
+      }
+
       default:
         return undefined;
     }
@@ -392,6 +437,11 @@ export class Room extends DurableObject {
     return { newBingo, newReach };
   }
 
+  prizes() {
+    if (!this.state.prizes) this.state.prizes = { items: [], awards: [] };
+    return this.state.prizes;
+  }
+
   nameOf(cid) {
     return this.state.members[cid]?.name || 'ゲスト';
   }
@@ -436,6 +486,10 @@ export class Room extends DurableObject {
         reach: Object.entries(b.reach || {}).map(([id, lines]) => ({ id, name: this.nameOf(id), lines })),
       },
       scoreboard: s.scoreboard,
+      prizes: {
+        items: this.prizes().items,
+        awards: this.prizes().awards.map((a) => ({ id: a.cid, name: a.name, prize: a.prize, round: a.round })),
+      },
       results: s.results,
       timer: s.timer,
     };

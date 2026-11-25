@@ -75,10 +75,12 @@
       retry = 0;
       updateBadge();
       clearInterval(pingTimer);
-      pingTimer = setInterval(() => send({ t: 'ping' }), 25000);
+      // 接続維持（サーバー側では自動応答されるので負荷にならない）
+      pingTimer = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send('ping'), 25000);
     };
 
     socket.onmessage = (e) => {
+      if (e.data === 'pong') return;
       let msg;
       try {
         msg = JSON.parse(e.data);

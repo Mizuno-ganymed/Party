@@ -173,8 +173,21 @@
   }
 
   /** リーチ・ビンゴの一覧 */
-  function standings(el, bingo, youId) {
+  /**
+   * prizes: 部屋の景品情報 { items, awards }（無ければ景品表示なし）
+   * onPrize(cid): 主催者だけ。ビンゴした人の景品ルーレットを回す
+   */
+  function standings(el, bingo, youId, prizes = null, onPrize = null) {
     const winners = bingo.winners || [];
+    const awards = (prizes?.awards || []).filter((a) => a.round === bingo.round);
+    const prizesLeft = (prizes?.items || []).reduce((s, it) => s + it.left, 0);
+    const prizeOf = (w) => {
+      const a = awards.find((x) => x.id === w.id);
+      if (a) return h('span', { class: 'won-prize' }, `🎁 ${a.prize}`);
+      if (onPrize && prizesLeft > 0)
+        return h('button', { type: 'button', class: 'btn small primary prize-btn', onclick: () => onPrize(w.id) }, '🎁 景品ルーレット');
+      return null;
+    };
     const reach = (bingo.reach || []).slice().sort((a, b) => b.lines - a.lines);
     const mark = (id, text) => (id === youId ? h('strong', { class: 'me' }, `${text}（あなた）`) : text);
     el.replaceChildren(
@@ -183,7 +196,7 @@
         ? h(
             'ol',
             { class: 'winners' },
-            winners.map((w) => h('li', null, mark(w.id, w.name), h('span', { class: 'muted' }, `  ${w.count}個目`))),
+            winners.map((w) => h('li', null, mark(w.id, w.name), h('span', { class: 'muted' }, `  ${w.count}個目`), prizeOf(w))),
           )
         : h('p', { class: 'muted' }, 'まだビンゴの人はいません'),
       h('h2', null, `🔥 リーチ ${reach.length}人`),
@@ -222,6 +235,61 @@
     const speak = speakToggle('bingo.speak', true);
     const history = createHistory({ withBoard: false });
     const drawBtn = h('button', { type: 'button', class: 'btn primary big', onclick: draw }, '次の番号');
+
+    // 景品（この端末に保存）
+    const loadPrizes = () => {
+      const p = Party.store.get('bingo.prizes', null);
+      return p && Array.isArray(p.items) ? { items: p.items, awards: Array.isArray(p.awards) ? p.awards : [] } : { items: [], awards: [] };
+    };
+    let prizes = loadPrizes();
+    const savePrizes = () => Party.store.set('bingo.prizes', prizes);
+    const prizeEl = Party.prizes.card({});
+    function renderPrizes() {
+      const left = prizes.items.reduce((s, it) => s + it.left, 0);
+      Party.prizes.render(prizeEl, {
+        ...prizes,
+        editable: true,
+        onLoad(items) {
+          prizes = { items: items.map((it) => ({ name: it.name, total: it.count, left: it.count })), awards: [] };
+          savePrizes();
+          renderPrizes();
+        },
+        onClear() {
+          prizes = { items: [], awards: [] };
+          savePrizes();
+          renderPrizes();
+        },
+        extra: left
+          ? h(
+              'div',
+              { class: 'row center' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn primary',
+                  onclick() {
+                    const name = prompt('当たった人の名前（省略できます）', '');
+                    if (name == null) return;
+                    const spin = Party.prizes.pick(prizes.items);
+                    if (!spin) return;
+                    Party.unlockAudio();
+                    const prize = spin.items[spin.target].name;
+                    prizes.items.find((it) => it.name === prize && it.left > 0).left -= 1;
+                    const winner = name.trim().slice(0, 20) || 'あなた';
+                    prizes.awards.push({ name: winner, prize });
+                    savePrizes();
+                    Party.prizes.showSpin({ winner, prize, spin, isMe: false });
+                    setTimeout(renderPrizes, spin.duration);
+                  },
+                },
+                '🎁 景品ルーレットを回す',
+              ),
+            )
+          : null,
+      });
+    }
+    renderPrizes();
     const undoBtn = h(
       'button',
       {
@@ -271,6 +339,7 @@
       h('div', { class: 'card center-col' }, stage.el, countEl, h('div', { class: 'row center' }, drawBtn)),
       h('div', { class: 'card' }, board.el),
       history.el,
+      prizeEl,
       h(
         'div',
         { class: 'row between wrap' },
@@ -318,6 +387,7 @@
     const countEl = h('div', { class: 'muted center' });
     const standingsEl = h('div', { class: 'card standings' });
     const history = createHistory({ withBoard: false });
+    const prizeEl = Party.prizes.card({});
     const speak = speakToggle('bingo.speak', true);
     const drawBtn = h(
       'button',
@@ -372,7 +442,17 @@
       undoBtn.disabled = rolling || !all.length;
       if (!rolling) ball.show(drawn[drawn.length - 1]);
       history.update(drawn);
-      standings(standingsEl, r.bingo, null);
+      const prizes = r.prizes || { items: [], awards: [] };
+      standings(standingsEl, r.bingo, null, prizes, (cid) => {
+        Party.unlockAudio();
+        room.send({ t: 'prize.spin', cid });
+      });
+      Party.prizes.render(prizeEl, {
+        ...prizes,
+        editable: true,
+        onLoad: (items) => room.send({ t: 'prize.set', items }),
+        onClear: () => room.send({ t: 'prize.clear' }),
+      });
     }
 
     room.on((r, ev) => {
@@ -391,12 +471,14 @@
         else if (ev.newReach?.length) Party.toast(`🔥 リーチ: ${ev.newReach.join('、')}`);
       }
       if (ev?.type === 'bingo.reset') Party.toast('新しいゲームを始めました');
+      if (ev?.type === 'prize.spin') Party.prizes.showSpin({ winner: ev.winner, prize: ev.prize, spin: ev.spin, isMe: false });
       render(r);
     });
 
     root.append(
       h('div', { class: 'card center-col' }, stage.el, countEl, h('div', { class: 'row center' }, drawBtn)),
       standingsEl,
+      prizeEl,
       h('div', { class: 'card' }, board.el),
       history.el,
       h('div', { class: 'row between wrap' }, speak.el, h('div', { class: 'row' }, undoBtn, resetBtn)),
@@ -428,6 +510,7 @@
     const cardEl = h('div', { class: 'bingo-card' });
     const history = createHistory();
     const standingsEl = h('div', { class: 'card standings' });
+    const prizeEl = Party.prizes.card({});
     const speak = speakToggle('bingo.speakGuest', false);
 
     /** 演出中の最新番号はまだ「出ていない」扱い */
@@ -509,7 +592,10 @@
       const reach = r.bingo.reach.find((x) => x.id === myId);
       statusEl.className = `my-status${win ? ' bingo' : reach ? ' reach' : ''}`;
       statusEl.textContent = win ? `🎉 ビンゴ！（${win.rank}位）` : reach ? `🔥 リーチ！${reach.lines > 1 ? ` ×${reach.lines}` : ''}` : '';
-      standings(standingsEl, r.bingo, myId);
+      const prizes = r.prizes || { items: [], awards: [] };
+      standings(standingsEl, r.bingo, myId, prizes);
+      Party.prizes.render(prizeEl, { ...prizes, youId: myId });
+      prizeEl.hidden = !prizes.items.length;
 
       if (wasBingo === false && win) celebrate('🎉 ビンゴ！ 主催者に知らせましょう');
       else if (wasReach === false && reach && !win) {
@@ -535,6 +621,9 @@
         wasBingo = wasReach = null;
         Party.toast('新しいゲーム！ カードが配り直されました');
       }
+      if (ev?.type === 'prize.spin') {
+        Party.prizes.showSpin({ winner: ev.winner, prize: ev.prize, spin: ev.spin, isMe: ev.cid === room.you?.id });
+      }
       if (ev?.type === 'bingo.mark' && ev.newBingo?.length) {
         const meNow = r?.bingo.winners.some((w) => w.id === room.you?.id) && !wasBingo;
         if (!meNow) Party.toast(`🎉 ${ev.newBingo.join('、')} がビンゴ！`);
@@ -552,6 +641,7 @@
       ),
       history.el,
       standingsEl,
+      prizeEl,
       h('div', { class: 'row center' }, speak.el),
     );
     render(room.room);
