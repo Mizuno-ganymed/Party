@@ -76,6 +76,15 @@ Cloudflare の管理画面で「Workers & Pages」→「作成」→「リポジ
 
 本番ブランチが `main` 以外になっていると、`main` にプッシュしても公開されません。
 
+### 自動ビルドが始まらないとき
+
+GitHub からの通知が Cloudflare に届かないと、プッシュしてもビルドが始まりません。その場合は、ダッシュボードの「設定」→「ビルド」で Git リポジトリを接続し直すか、Workers Builds API で手動ビルドを開始します（**ユーザー**の API トークンが必要。アカウントのトークンは使えません）。
+
+1. `GET /accounts/{account_id}/builds/workers/{script_tag}/triggers` で `trigger_uuid` を調べる（`script_tag` は `GET /accounts/{account_id}/workers/scripts` の `tag`）
+2. `POST /accounts/{account_id}/builds/triggers/{trigger_uuid}/builds` に `{"branch":"main"}` を送る
+
+この環境のネットワークでは `wrangler deploy` の静的ファイルのアップロードが失敗するため、手元からの直接デプロイではなく上の方法を使います。
+
 部屋の状態は Durable Objects（SQLite）に保存されます。無料プランで利用できます。
 
 > PWA の機能（ホーム画面への追加・オフライン）は HTTPS か `localhost` で開いたときだけ有効です。`index.html` を直接開いた場合は通常のWebページとして動きます。
