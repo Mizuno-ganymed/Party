@@ -185,7 +185,17 @@
       const a = awards.find((x) => x.id === w.id);
       if (a) return h('span', { class: 'won-prize' }, `🎁 ${a.prize}`);
       if (onPrize && prizesLeft > 0)
-        return h('button', { type: 'button', class: 'btn small primary prize-btn', onclick: () => onPrize(w.id) }, '🎁 景品ルーレット');
+        return h(
+          'button',
+          {
+            type: 'button',
+            class: 'btn small ghost prize-btn',
+            title: 'ビンゴになった人のスマホで回せない場合に、主催者が代わりに回します',
+            onclick: () => onPrize(w.id),
+          },
+          '🎁 代わりに回す',
+        );
+      if (prizesLeft > 0) return h('span', { class: 'muted small waiting-prize' }, '🎁 ルーレット待ち');
       return null;
     };
     const reach = (bingo.reach || []).slice().sort((a, b) => b.lines - a.lines);
@@ -208,14 +218,6 @@
           )
         : h('p', { class: 'muted' }, 'まだリーチの人はいません'),
     );
-  }
-
-  function celebrate(text) {
-    Party.fanfare();
-    Party.vibrate([120, 60, 120, 60, 240]);
-    const banner = h('div', { class: 'celebrate', role: 'alert' }, text);
-    document.body.append(banner);
-    setTimeout(() => banner.remove(), 3500);
   }
 
   // ---------------------------------------------------------------
@@ -466,10 +468,8 @@
         });
         return;
       }
-      if (ev?.type === 'bingo.mark') {
-        if (ev.newBingo?.length) celebrate(`🎉 ビンゴ！ ${ev.newBingo.join('、')}`);
-        else if (ev.newReach?.length) Party.toast(`🔥 リーチ: ${ev.newReach.join('、')}`);
-      }
+      // ビンゴの通知は room.js が全員に出す。リーチは主催者にだけ小さく知らせる
+      if (ev?.type === 'bingo.mark' && !ev.newBingo?.length && ev.newReach?.length) Party.toast(`🔥 リーチ: ${ev.newReach.join('、')}`);
       if (ev?.type === 'bingo.reset') Party.toast('新しいゲームを始めました');
       if (ev?.type === 'prize.spin') Party.prizes.showSpin({ winner: ev.winner, prize: ev.prize, spin: ev.spin, isMe: false });
       render(r);
@@ -507,6 +507,23 @@
     const ball = stage.ball;
     const countEl = h('div', { class: 'muted small center' });
     const statusEl = h('div', { class: 'my-status' });
+    let spinRequested = false;
+    const spinBtn = h(
+      'button',
+      {
+        type: 'button',
+        class: 'btn primary big my-prize-btn',
+        hidden: true,
+        onclick() {
+          Party.unlockAudio();
+          if (room.send({ t: 'prize.spin' })) {
+            spinRequested = true;
+            spinBtn.disabled = true;
+          }
+        },
+      },
+      '🎁 景品ルーレットを回す',
+    );
     const cardEl = h('div', { class: 'bingo-card' });
     const history = createHistory();
     const standingsEl = h('div', { class: 'card standings' });
@@ -592,13 +609,20 @@
       const reach = r.bingo.reach.find((x) => x.id === myId);
       statusEl.className = `my-status${win ? ' bingo' : reach ? ' reach' : ''}`;
       statusEl.textContent = win ? `🎉 ビンゴ！（${win.rank}位）` : reach ? `🔥 リーチ！${reach.lines > 1 ? ` ×${reach.lines}` : ''}` : '';
+      // ビンゴになったら、自分で景品ルーレットを回せる
+      const prizeState = r.prizes || { items: [], awards: [] };
+      const awarded = prizeState.awards.some((a) => a.id === myId && a.round === r.bingo.round);
+      const prizesLeft = prizeState.items.reduce((s, it) => s + it.left, 0);
+      const canSpin = !!win && !awarded && prizesLeft > 0;
+      if (!canSpin) spinRequested = false;
+      spinBtn.hidden = !canSpin;
+      spinBtn.disabled = spinRequested || room.status !== 'open';
       const prizes = r.prizes || { items: [], awards: [] };
       standings(standingsEl, r.bingo, myId, prizes);
       Party.prizes.render(prizeEl, { ...prizes, youId: myId });
       prizeEl.hidden = !prizes.items.length;
 
-      if (wasBingo === false && win) celebrate('🎉 ビンゴ！ 主催者に知らせましょう');
-      else if (wasReach === false && reach && !win) {
+      if (wasReach === false && reach && !win) {
         Party.vibrate([80, 40, 80]);
         Party.toast('🔥 リーチ！');
       }
@@ -624,15 +648,11 @@
       if (ev?.type === 'prize.spin') {
         Party.prizes.showSpin({ winner: ev.winner, prize: ev.prize, spin: ev.spin, isMe: ev.cid === room.you?.id });
       }
-      if (ev?.type === 'bingo.mark' && ev.newBingo?.length) {
-        const meNow = r?.bingo.winners.some((w) => w.id === room.you?.id) && !wasBingo;
-        if (!meNow) Party.toast(`🎉 ${ev.newBingo.join('、')} がビンゴ！`);
-      }
       render(r);
     });
 
     root.append(
-      h('div', { class: 'guest-top' }, stage.el, countEl, statusEl),
+      h('div', { class: 'guest-top' }, stage.el, countEl, statusEl, spinBtn),
       h(
         'div',
         { class: 'card' },

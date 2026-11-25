@@ -226,6 +226,14 @@ export class Room extends DurableObject {
       this.broadcast(event);
       return;
     }
+    if (msg.t === 'prize.spin' && !att.isHost) {
+      // ビンゴになった本人は、自分の景品ルーレットだけ回せる
+      const event = this.apply({ t: 'prize.spin', cid: att.cid });
+      if (event === undefined) return;
+      await this.save();
+      this.broadcast(event);
+      return;
+    }
     if (!att.isHost) {
       ws.send(JSON.stringify({ t: 'error', message: '主催者だけが操作できます' }));
       return;
@@ -404,8 +412,8 @@ export class Room extends DurableObject {
     const mine = marks[cid] || (marks[cid] = []);
     if (mine.includes(n)) return undefined;
     mine.push(n);
-    const { newBingo, newReach } = this.updateWinners();
-    return { type: 'bingo.mark', newBingo, newReach };
+    const { newBingo, newBingoIds, newReach } = this.updateWinners();
+    return { type: 'bingo.mark', newBingo, newBingoIds, newReach };
   }
 
   /** 各カードのビンゴ・リーチを判定し、新しく達成した人を返す */
@@ -417,6 +425,7 @@ export class Room extends DurableObject {
     const prevReach = b.reach || {};
     const reach = {};
     const newBingo = [];
+    const newBingoIds = [];
     const newReach = [];
 
     for (const [cid, card] of Object.entries(b.cards)) {
@@ -425,6 +434,7 @@ export class Room extends DurableObject {
         if (!prevWinners.has(cid)) {
           b.winners.push({ cid, count: b.drawn.length });
           newBingo.push(this.nameOf(cid));
+          newBingoIds.push(cid);
         }
       } else if (st.reach > 0) {
         reach[cid] = st.reach;
@@ -434,7 +444,7 @@ export class Room extends DurableObject {
     // 取り消しでビンゴでなくなった人を外す
     b.winners = b.winners.filter((w) => b.cards[w.cid] && cardStatus(b.cards[w.cid], markedOf(w.cid)).bingo > 0);
     b.reach = reach;
-    return { newBingo, newReach };
+    return { newBingo, newBingoIds, newReach };
   }
 
   prizes() {

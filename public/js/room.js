@@ -98,6 +98,7 @@
         const wasFirst = first;
         first = false;
         notify(ev);
+        if (ev?.type === 'bingo.mark' && ev.newBingo?.length) announceBingo(ev);
         if (wasFirst && you.isHost) Party.syncNav();
       } else if (msg.t === 'error') {
         toast(msg.message);
@@ -128,6 +129,19 @@
       const delay = Math.min(10000, 1000 * 2 ** retry++);
       retryTimer = setTimeout(connect, delay);
     };
+  }
+
+  /** ビンゴが出たら、部屋の全員に知らせる（どの画面を開いていても） */
+  function announceBingo(ev) {
+    const myId = you?.id;
+    const ids = ev.newBingoIds || [];
+    const others = ev.newBingo.filter((_, i) => ids[i] !== myId);
+    if (myId && ids.includes(myId)) {
+      const prizesLeft = (room?.prizes?.items || []).reduce((s, it) => s + it.left, 0);
+      Party.celebrate('🎉 ビンゴ！', prizesLeft ? '景品ルーレットを回しましょう' : '主催者に知らせましょう');
+    } else if (others.length) {
+      Party.celebrate(`🎉 ${others.join('、')} さんが\nビンゴ！`, location.hash.startsWith('#/bingo') ? '' : 'ビンゴの画面で確認できます');
+    }
   }
 
   function followHost(tool) {

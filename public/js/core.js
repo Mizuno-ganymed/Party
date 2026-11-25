@@ -359,6 +359,16 @@
     [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.22, 0.18, 'triangle', i * 0.1));
   }
 
+  /** 画面いっぱいのお祝い表示（効果音・バイブつき） */
+  function celebrate(text, sub = '') {
+    fanfare();
+    vibrate([120, 60, 120, 60, 240]);
+    document.querySelectorAll('.celebrate').forEach((el) => el.remove());
+    const banner = h('div', { class: 'celebrate', role: 'alert' }, h('div', null, text), sub ? h('div', { class: 'celebrate-sub' }, sub) : null);
+    document.body.append(banner);
+    setTimeout(() => banner.remove(), 4000);
+  }
+
   function vibrate(pattern) {
     try {
       navigator.vibrate?.(pattern);
@@ -678,6 +688,7 @@
     copy,
     beep,
     fanfare,
+    celebrate,
     unlockAudio,
     vibrate,
     keepAwake,

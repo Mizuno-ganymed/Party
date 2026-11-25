@@ -8,7 +8,7 @@
  *
  * ファイルを追加・削除したら APP_FILES を更新し、VERSION を上げてください。
  */
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `party-tools-${VERSION}`;
 
 const APP_FILES = [

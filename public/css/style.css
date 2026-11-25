@@ -1594,3 +1594,35 @@ button.bc-cell.free {
   color: var(--accent);
   overflow-wrap: anywhere;
 }
+
+.my-prize-btn:not([disabled]) {
+  animation: prize-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes prize-pulse {
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+}
+
+.waiting-prize {
+  margin-left: 8px;
+}
+
+.celebrate {
+  grid-auto-rows: min-content;
+  align-content: center;
+  gap: 12px;
+}
+
+.celebrate-sub {
+  font-size: clamp(1rem, 5vw, 1.4rem);
+  font-weight: bold;
+  opacity: 0.95;
+}
+
+.celebrate > div:first-child {
+  white-space: pre-line;
+  line-height: 1.3;
+}
