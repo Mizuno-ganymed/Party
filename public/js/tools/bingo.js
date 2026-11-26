@@ -96,45 +96,57 @@
 
   /** 1列あたりの数・片側の行数（片側 4×10 = 40個、左右で 80個 > 74個） */
   const CHIP_H = 20; // 小さい番号の高さ（CSS の .stage-chip と合わせる）
-  const CHIP_GAP = 3;
+  const STAGE_ROWS = 5; // 左右それぞれ見える行数。超えたら欄の中だけスクロール
 
   /**
    * 現在の番号（大きいボール）と、過去の番号を左右に小さく並べる表示
-   * - 左側: ボールのすぐ左から外側（画面の端）へ向かって並べ、端まで来たら下の行へ
-   * - 左側がボールの高さまで埋まったら、右側にボールのすぐ右から同じように並べる
-   * - 右側も埋まったら、左側の古い番号から順に消えていく（いつも最新の番号が見える）
-   * 欄の高さはボールの高さまでなので、番号がたまっても画面が縦に伸びない
+   * - 左に5行（ボールのすぐ左から外へ、端まで来たら下の行へ）→ 右に5行 →
+   *   左の6行目〜 → 右の6行目〜 … と、5行ずつ左右交互に埋める
+   * - 欄の高さは5行分。あふれたら左右の欄がいっしょにスクロールする（中央のボールは動かない）
+   * - 新しい番号が出たら、自動で一番下（最新）を表示する
    */
   function createStage(small = false) {
     const ball = createBall(small);
-    const left = h('div', { class: 'stage-side left', 'aria-label': '最近出た番号' });
+    const left = h('div', { class: 'stage-side left', 'aria-label': 'これまでに出た番号' });
     const right = h('div', { class: 'stage-side right' });
     const el = h('div', { class: `bingo-stage${small ? ' small' : ''}` }, left, ball.el, right);
     let lastKey = '';
     let lastPrev = [];
     const chip = (n, i) => h('span', { class: 'stage-chip', 'data-letter': letterOf(n), title: `${i + 1}番目` }, String(n));
 
-    /** 片側に並べられる数（ボールの高さに入る行数 × 幅に入る列数） */
-    const capacity = () => {
-      const ballH = ball.el.offsetHeight;
-      if (!ballH) return 16; // まだ画面に出ていないとき（あとで描き直す）
-      const rows = Math.max(1, Math.floor((ballH + CHIP_GAP) / (CHIP_H + CHIP_GAP)));
-      const cols = Math.max(1, getComputedStyle(left).gridTemplateColumns.split(' ').filter(Boolean).length);
-      left.style.maxHeight = right.style.maxHeight = `${ballH}px`;
-      return rows * cols;
+    // 左右のスクロールをそろえる
+    let syncing = false;
+    const sync = (from, to) => () => {
+      if (syncing) return;
+      syncing = true;
+      to.scrollTop = from.scrollTop;
+      requestAnimationFrame(() => (syncing = false));
     };
+    left.addEventListener('scroll', sync(left, right), { passive: true });
+    right.addEventListener('scroll', sync(right, left), { passive: true });
+
+    const colsOf = () => Math.max(1, getComputedStyle(left).gridTemplateColumns.split(' ').filter(Boolean).length);
 
     /** prev: 今ボールに出ている番号より前に出た番号（出た順） */
     const update = (prev) => {
       lastPrev = prev;
-      const cap = capacity();
-      const key = `${cap}:${prev.join(',')}`;
+      const cols = colsOf();
+      const key = `${cols}:${prev.join(',')}`;
       if (key === lastKey) return;
+      const [lastCols, lastList = ''] = lastKey.split(':');
+      // 番号が増えた・列の数が変わった（画面に出た直後や向きの変更）ときは最新を表示する
+      const toLatest = prev.length > lastList.split(',').filter(Boolean).length || String(cols) !== lastCols;
       lastKey = key;
-      const shown = prev.slice(-cap * 2); // 入りきらない古い番号は消える
-      const offset = prev.length - shown.length;
-      left.replaceChildren(...shown.slice(0, cap).map((n, i) => chip(n, offset + i)));
-      right.replaceChildren(...shown.slice(cap).map((n, i) => chip(n, offset + cap + i)));
+      const page = cols * STAGE_ROWS; // 片側5行分
+      const L = [];
+      const R = [];
+      prev.forEach((n, i) => (i % (page * 2) < page ? L : R).push(chip(n, i)));
+      left.replaceChildren(...L);
+      right.replaceChildren(...R);
+      // 左右の行数をそろえて、いっしょにスクロールしたときに行がずれないようにする
+      const rows = Math.max(1, Math.ceil(L.length / cols), Math.ceil(R.length / cols));
+      left.style.gridTemplateRows = right.style.gridTemplateRows = `repeat(${rows}, ${CHIP_H}px)`;
+      if (toLatest) left.scrollTop = right.scrollTop = left.scrollHeight;
     };
 
     // 画面の幅や向きが変わったら並べ直す

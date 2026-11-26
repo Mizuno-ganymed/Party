@@ -1457,7 +1457,21 @@ button.bc-cell.free {
   grid-auto-rows: 20px;
   gap: 3px;
   align-content: start;
-  overflow: hidden;
+  /* 5行分の高さ。あふれたら欄の中だけスクロール */
+  height: calc(5 * 20px + 4 * 3px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stage-side::-webkit-scrollbar {
+  width: 4px;
+}
+
+.stage-side::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
 }
 
 /* 左側はボールのすぐ左から、画面の端へ向かって並べる */
