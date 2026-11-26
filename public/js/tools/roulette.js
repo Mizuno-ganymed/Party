@@ -189,6 +189,7 @@ Party.register({
       const t0 = performance.now();
       let lastIdx = indexAt(rotation, n);
       spinning = true;
+      canvas.classList.add('spinning');
       spinBtn.disabled = true;
       result.textContent = '';
       result.classList.remove('pop');
@@ -208,6 +209,7 @@ Party.register({
           return;
         }
         spinning = false;
+        canvas.classList.remove('spinning');
         const winner = items[indexAt(rotation, n)];
         result.textContent = `🎉 ${winner}`;
         void result.offsetWidth;

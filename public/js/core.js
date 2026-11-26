@@ -424,11 +424,61 @@
     toast('ホーム画面に追加しました');
   });
 
+  /**
+   * いま再読み込みすると困る操作の最中か
+   * （番号やルーレットが回っている、お祝いや案内の表示中、部屋なしのタイマー、文字の入力中）
+   */
+  function isBusy() {
+    if (document.querySelector('.bingo-ball.rolling, .modal-overlay, .celebrate, .wheel.spinning, .dice-tray.rolling, [data-busy]')) return true;
+    const el = document.activeElement;
+    return !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !!el.value;
+  }
+
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker の登録に失敗:', e));
+
+    // 新しい版が使えるようになったら、操作の邪魔にならないときに再読み込みして切り替える
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    const reloadWhenIdle = () => {
+      if (reloading) return;
+      if (isBusy()) {
+        setTimeout(reloadWhenIdle, 2000);
+        return;
+      }
+      reloading = true;
+      try {
+        sessionStorage.setItem('party:updated', '1');
+      } catch {
+        /* 保存できなくても切り替えは行う */
+      }
+      location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      // 初めて Service Worker が入ったとき（＝最初の訪問）は切り替え不要
+      if (hadController) reloadWhenIdle();
     });
+
+    window.addEventListener('load', async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('sw.js');
+        // 開いたままの人にも届くように、画面に戻ったときと30分ごとに新しい版を確認する
+        const check = () => reg.update().catch(() => {});
+        document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+        setInterval(check, 30 * 60 * 1000);
+      } catch (e) {
+        console.warn('Service Worker の登録に失敗:', e);
+      }
+    });
+
+    try {
+      if (sessionStorage.getItem('party:updated')) {
+        sessionStorage.removeItem('party:updated');
+        window.addEventListener('load', () => setTimeout(() => toast('新しい版に更新しました'), 600));
+      }
+    } catch {
+      /* 無視 */
+    }
   }
 
   /** 今の端末・ブラウザの種類 */

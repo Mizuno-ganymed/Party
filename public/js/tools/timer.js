@@ -112,6 +112,9 @@ Party.register({
 
     // ---------- 表示 ----------
     function render() {
+      // 部屋なしのタイマーは端末の中だけにあるので、動いている間は自動更新の再読み込みを待ってもらう
+      if (!inRoom && model && model.status !== 'idle') root.dataset.busy = 'true';
+      else delete root.dataset.busy;
       if (!model) {
         display.textContent = '--:--';
         note.textContent = '接続中…';
