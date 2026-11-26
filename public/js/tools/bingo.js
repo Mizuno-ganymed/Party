@@ -95,29 +95,50 @@
   }
 
   /** 1列あたりの数・片側の行数（片側 4×10 = 40個、左右で 80個 > 74個） */
-  const SIDE_COLS = 4;
-  const SIDE_CAP = 40;
+  const CHIP_H = 20; // 小さい番号の高さ（CSS の .stage-chip と合わせる）
+  const CHIP_GAP = 3;
 
   /**
    * 現在の番号（大きいボール）と、過去の番号を左右に小さく並べる表示
-   * 左側: ボールのすぐ左から外側（画面の端）へ向かって並べ、端まで来たら下の行へ
-   * 左側が埋まったら、右側にボールのすぐ右から同じように並べる
+   * - 左側: ボールのすぐ左から外側（画面の端）へ向かって並べ、端まで来たら下の行へ
+   * - 左側がボールの高さまで埋まったら、右側にボールのすぐ右から同じように並べる
+   * - 右側も埋まったら、左側の古い番号から順に消えていく（いつも最新の番号が見える）
+   * 欄の高さはボールの高さまでなので、番号がたまっても画面が縦に伸びない
    */
   function createStage(small = false) {
     const ball = createBall(small);
-    const left = h('div', { class: 'stage-side left', 'aria-label': 'これまでに出た番号' });
+    const left = h('div', { class: 'stage-side left', 'aria-label': '最近出た番号' });
     const right = h('div', { class: 'stage-side right' });
     const el = h('div', { class: `bingo-stage${small ? ' small' : ''}` }, left, ball.el, right);
     let lastKey = '';
+    let lastPrev = [];
     const chip = (n, i) => h('span', { class: 'stage-chip', 'data-letter': letterOf(n), title: `${i + 1}番目` }, String(n));
+
+    /** 片側に並べられる数（ボールの高さに入る行数 × 幅に入る列数） */
+    const capacity = () => {
+      const ballH = ball.el.offsetHeight;
+      if (!ballH) return 16; // まだ画面に出ていないとき（あとで描き直す）
+      const rows = Math.max(1, Math.floor((ballH + CHIP_GAP) / (CHIP_H + CHIP_GAP)));
+      const cols = Math.max(1, getComputedStyle(left).gridTemplateColumns.split(' ').filter(Boolean).length);
+      left.style.maxHeight = right.style.maxHeight = `${ballH}px`;
+      return rows * cols;
+    };
+
     /** prev: 今ボールに出ている番号より前に出た番号（出た順） */
     const update = (prev) => {
-      const key = prev.join(',');
+      lastPrev = prev;
+      const cap = capacity();
+      const key = `${cap}:${prev.join(',')}`;
       if (key === lastKey) return;
       lastKey = key;
-      left.replaceChildren(...prev.slice(0, SIDE_CAP).map((n, i) => chip(n, i)));
-      right.replaceChildren(...prev.slice(SIDE_CAP).map((n, i) => chip(n, i + SIDE_CAP)));
+      const shown = prev.slice(-cap * 2); // 入りきらない古い番号は消える
+      const offset = prev.length - shown.length;
+      left.replaceChildren(...shown.slice(0, cap).map((n, i) => chip(n, offset + i)));
+      right.replaceChildren(...shown.slice(cap).map((n, i) => chip(n, offset + cap + i)));
     };
+
+    // 画面の幅や向きが変わったら並べ直す
+    new ResizeObserver(() => update(lastPrev)).observe(el);
     return { el, ball, update };
   }
 
