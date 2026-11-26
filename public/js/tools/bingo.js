@@ -188,26 +188,35 @@
    * prizes: 部屋の景品情報 { items, awards }（無ければ景品表示なし）
    * onPrize(cid): 主催者だけ。ビンゴした人の景品ルーレットを回す
    */
+  /** 景品ルーレットの順番待ち（ビンゴになった順）と、ルーレット中かどうか */
+  const prizeTurn = (prizes) => ({
+    queue: prizes?.queue || [],
+    busy: Party.room.now() < (prizes?.spinUntil || 0),
+  });
+
   function standings(el, bingo, youId, prizes = null, onPrize = null) {
     const winners = bingo.winners || [];
     const awards = (prizes?.awards || []).filter((a) => a.round === bingo.round);
-    const prizesLeft = (prizes?.items || []).reduce((s, it) => s + it.left, 0);
+    const { queue, busy } = prizeTurn(prizes);
     const prizeOf = (w) => {
       const a = awards.find((x) => x.id === w.id);
       if (a) return h('span', { class: 'won-prize' }, `🎁 ${a.prize}`);
-      if (onPrize && prizesLeft > 0)
+      const pos = queue.indexOf(w.id);
+      if (pos < 0) return null;
+      if (pos > 0) return h('span', { class: 'muted small waiting-prize' }, `⏳ 順番待ち（${pos + 1}番目）`);
+      if (onPrize)
         return h(
           'button',
           {
             type: 'button',
             class: 'btn small ghost prize-btn',
+            disabled: busy || null,
             title: 'ビンゴになった人のスマホで回せない場合に、主催者が代わりに回します',
             onclick: () => onPrize(w.id),
           },
-          '🎁 代わりに回す',
+          busy ? '⏳ ルーレット中' : '🎁 代わりに回す',
         );
-      if (prizesLeft > 0) return h('span', { class: 'muted small waiting-prize' }, '🎁 ルーレット待ち');
-      return null;
+      return h('span', { class: 'small waiting-prize now' }, busy ? '⏳ 次の番' : '🎁 ルーレットの番');
     };
     const reach = (bingo.reach || []).slice().sort((a, b) => b.lines - a.lines);
     const mark = (id, text) => (id === youId ? h('strong', { class: 'me' }, `${text}（あなた）`) : text);
@@ -229,6 +238,14 @@
           )
         : h('p', { class: 'muted' }, 'まだリーチの人はいません'),
     );
+  }
+
+  /** ルーレットの演出が終わる時刻に描き直す（ボタンを押せるように戻すため） */
+  let refreshTimer = 0;
+  function scheduleRefresh(prizes, redraw) {
+    clearTimeout(refreshTimer);
+    const wait = (prizes?.spinUntil || 0) - Party.room.now();
+    if (wait > 0) refreshTimer = setTimeout(redraw, wait + 50);
   }
 
   // ---------------------------------------------------------------
@@ -405,6 +422,7 @@
     const ball = stage.ball;
     const board = createBoard();
     const countEl = h('div', { class: 'muted center' });
+    const waitEl = h('p', { class: 'warn small center', hidden: true });
     const standingsEl = h('div', { class: 'card standings' });
     const history = createHistory({ withBoard: false });
     const prizeEl = Party.prizes.card({});
@@ -458,7 +476,11 @@
       board.update(drawn);
       countEl.textContent = `${drawn.length} / 75`;
       stage.update(previousOf(drawn, rolling));
-      drawBtn.disabled = rolling || all.length >= 75 || room.status !== 'open';
+      const turn = prizeTurn(r.prizes);
+      drawBtn.disabled = rolling || all.length >= 75 || room.status !== 'open' || turn.queue.length > 0;
+      waitEl.hidden = !turn.queue.length;
+      waitEl.textContent = `🎁 ビンゴの人が景品ルーレットを回し終わるまで、次の番号は引けません（あと${turn.queue.length}人）`;
+      scheduleRefresh(r.prizes, () => render(room.room));
       undoBtn.disabled = rolling || !all.length;
       if (!rolling) ball.show(drawn[drawn.length - 1]);
       history.update(drawn);
@@ -495,7 +517,7 @@
     });
 
     root.append(
-      h('div', { class: 'card center-col' }, stage.el, countEl, h('div', { class: 'row center' }, drawBtn)),
+      h('div', { class: 'card center-col' }, stage.el, countEl, h('div', { class: 'row center' }, drawBtn), waitEl),
       standingsEl,
       prizeEl,
       h('div', { class: 'card' }, board.el),
@@ -506,6 +528,7 @@
 
     return () => {
       ball.stop();
+      clearTimeout(refreshTimer);
       if ('speechSynthesis' in window) speechSynthesis.cancel();
     };
   }
@@ -527,6 +550,7 @@
     const countEl = h('div', { class: 'muted small center' });
     const statusEl = h('div', { class: 'my-status' });
     let spinRequested = false;
+    let waitedInLine = false;
     const spinBtn = h(
       'button',
       {
@@ -676,10 +700,26 @@
       const prizeState = r.prizes || { items: [], awards: [] };
       const awarded = prizeState.awards.some((a) => a.id === myId && a.round === r.bingo.round);
       const prizesLeft = prizeState.items.reduce((s, it) => s + it.left, 0);
-      const canSpin = !!win && !awarded && prizesLeft > 0;
+      const turn = prizeTurn(prizeState);
+      const myPos = turn.queue.indexOf(myId);
+      const canSpin = !!win && !awarded && prizesLeft > 0 && myPos >= 0;
+      const myTurn = canSpin && myPos === 0 && !turn.busy;
       if (!canSpin) spinRequested = false;
       spinBtn.hidden = !canSpin;
-      spinBtn.disabled = spinRequested || room.status !== 'open';
+      spinBtn.disabled = !myTurn || spinRequested || room.status !== 'open';
+      spinBtn.textContent = myPos > 0 ? `⏳ 順番待ち（あと${myPos}人）` : turn.busy ? '⏳ ルーレット中…' : '🎁 景品ルーレットを回す';
+      spinBtn.classList.toggle('waiting', !myTurn);
+      // 順番待ちのあと、前の人のルーレットが終わって回せるようになったら知らせる
+      if (myPos > 0) waitedInLine = true;
+      if (myTurn && waitedInLine) {
+        waitedInLine = false;
+        Party.prizes.close(); // 前の人の結果の画面を閉じて、ボタンを押せるようにする
+        Party.vibrate([100, 50, 100]);
+        Party.beep(880, 0.12, 0.2, 'triangle');
+        Party.beep(1175, 0.18, 0.2, 'triangle', 0.12);
+        Party.toast('🎁 あなたの番です！ 景品ルーレットを回しましょう');
+      }
+      scheduleRefresh(prizeState, () => render(room.room));
       const prizes = r.prizes || { items: [], awards: [] };
       standings(standingsEl, r.bingo, myId, prizes);
       Party.prizes.render(prizeEl, { ...prizes, youId: myId });
@@ -736,6 +776,7 @@
     return () => {
       ball.stop();
       resize.disconnect();
+      clearTimeout(refreshTimer);
       if ('speechSynthesis' in window) speechSynthesis.cancel();
     };
   }

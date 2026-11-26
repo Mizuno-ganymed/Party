@@ -1843,3 +1843,13 @@ button.bc-cell.free {
   letter-spacing: 0.08em;
   font-size: 0.95rem;
 }
+
+/* 景品ルーレットの順番待ち */
+.my-prize-btn.waiting {
+  animation: none;
+}
+
+.waiting-prize.now {
+  color: var(--accent);
+  font-weight: bold;
+}

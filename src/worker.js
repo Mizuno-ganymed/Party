@@ -246,9 +246,13 @@ export class Room extends DurableObject {
       return;
     }
     if (msg.t === 'prize.spin' && !att.isHost) {
-      // ビンゴになった本人は、自分の景品ルーレットだけ回せる
+      // ビンゴになった本人は、自分の番が来たら自分の景品ルーレットだけ回せる
       const event = this.apply({ t: 'prize.spin', cid: att.cid });
       if (event === undefined) return;
+      if (event.error) {
+        ws.send(JSON.stringify({ t: 'error', message: event.error }));
+        return;
+      }
       await this.save();
       this.broadcast(event);
       return;
@@ -260,6 +264,10 @@ export class Room extends DurableObject {
 
     const event = this.apply(msg);
     if (event === undefined) return;
+    if (event.error) {
+      ws.send(JSON.stringify({ t: 'error', message: event.error }));
+      return;
+    }
     await this.save();
     this.broadcast(event);
   }
@@ -276,6 +284,8 @@ export class Room extends DurableObject {
       }
 
       case 'bingo.draw': {
+        const waiting = this.prizeQueue();
+        if (waiting.length) return { error: `ビンゴの人が景品ルーレットを回し終わるまで、次の番号は引けません（あと${waiting.length}人）` };
         const drawn = new Set(s.bingo.drawn);
         const remaining = [];
         for (let n = 1; n <= 75; n++) if (!drawn.has(n)) remaining.push(n);
@@ -401,6 +411,10 @@ export class Room extends DurableObject {
         const b = s.bingo;
         if (!b.winners.some((w) => w.cid === cid)) return undefined;
         if (p.awards.some((a) => a.cid === cid && a.round === b.round)) return undefined;
+        // ビンゴになった順に1人ずつ。前の人のルーレットが終わるまでは回せない
+        const queue = this.prizeQueue();
+        if (queue[0] !== cid) return { error: 'ビンゴになった順に回します。順番が来るまでお待ちください' };
+        if (Date.now() < (p.spinUntil || 0)) return { error: 'ほかの人のルーレットが終わるまでお待ちください' };
         const counts = prizesOnWheel(p.items, p.mode, p.size);
         const avail = p.items.map((it, i) => ({ item: it, n: counts[i] })).filter((x) => x.n > 0);
         const units = avail.reduce((sum, x) => sum + x.n, 0);
@@ -416,6 +430,8 @@ export class Room extends DurableObject {
         };
         const prize = avail[target].item.name;
         avail[target].item.left -= 1;
+        // 演出（回転＋結果の表示）が終わるまで、次の人は回せない
+        p.spinUntil = Date.now() + spin.duration + 3000;
         const winner = this.nameOf(cid);
         p.awards.push({ cid, name: winner, prize, round: b.round, at: Date.now() });
         return { type: 'prize.spin', winner, cid, prize, spin };
@@ -477,6 +493,16 @@ export class Room extends DurableObject {
     return { newBingo, newBingoIds, newReach };
   }
 
+  /** 景品ルーレットをまだ回していないビンゴの人（ビンゴになった順）。景品が残っていなければ空 */
+  prizeQueue() {
+    const p = this.prizes();
+    const b = this.state.bingo;
+    const left = prizesOnWheel(p.items, p.mode, p.size).reduce((sum, n) => sum + n, 0);
+    if (!left) return [];
+    const done = new Set(p.awards.filter((a) => a.round === b.round).map((a) => a.cid));
+    return b.winners.map((w) => w.cid).filter((cid) => !done.has(cid));
+  }
+
   prizes() {
     if (!this.state.prizes) this.state.prizes = { items: [], awards: [] };
     const p = this.state.prizes;
@@ -533,6 +559,8 @@ export class Room extends DurableObject {
         items: this.prizes().items,
         mode: this.prizes().mode,
         size: this.prizes().size,
+        queue: this.prizeQueue(),
+        spinUntil: this.prizes().spinUntil || 0,
         awards: this.prizes().awards.map((a) => ({ id: a.cid, name: a.name, prize: a.prize, round: a.round })),
       },
       results: s.results,

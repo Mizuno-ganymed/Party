@@ -364,5 +364,8 @@
     return api;
   }
 
-  Party.prizes = { parse, readFile, onWheel, pick, card, render, showSpin };
+  /** 表示中のルーレットを閉じる */
+  const close = () => current?.close();
+
+  Party.prizes = { parse, readFile, onWheel, pick, card, render, showSpin, close };
 })();

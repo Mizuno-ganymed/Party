@@ -137,8 +137,11 @@
     const ids = ev.newBingoIds || [];
     const others = ev.newBingo.filter((_, i) => ids[i] !== myId);
     if (myId && ids.includes(myId)) {
-      const prizesLeft = (room?.prizes?.items || []).reduce((s, it) => s + it.left, 0);
-      Party.celebrate('🎉 ビンゴ！', prizesLeft ? '景品ルーレットを回しましょう' : '主催者に知らせましょう');
+      const pos = (room?.prizes?.queue || []).indexOf(myId);
+      Party.celebrate(
+        '🎉 ビンゴ！',
+        pos === 0 ? '景品ルーレットを回しましょう' : pos > 0 ? `ビンゴになった順に景品ルーレットを回します（あと${pos}人）` : '主催者に知らせましょう',
+      );
     } else if (others.length) {
       Party.celebrate(`🎉 ${others.join('、')} さんが\nビンゴ！`, location.hash.startsWith('#/bingo') ? '' : 'ビンゴの画面で確認できます');
     }
