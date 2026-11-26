@@ -13,6 +13,10 @@ import { DurableObject } from 'cloudflare:workers';
 
 const CODE_RE = /^\d{6}$/;
 const ROOM_TTL = 24 * 60 * 60 * 1000;
+// 連続した操作（印つけなど）は、この間隔で1回にまとめて保存する（無料枠の書き込み回数を節約）
+const SAVE_DELAY = 2000;
+// 取り返しのつかない操作は、まとめずにすぐ保存する
+const SAVE_NOW = new Set(['prize.spin', 'prize.set', 'prize.clear', 'prize.mode', 'bingo.reset']);
 const MAX_MEMBERS = 300;
 const MAX_MESSAGE = 32 * 1024;
 const ROOM_TOOLS = ['', 'bingo', 'scoreboard', 'roulette', 'teams', 'order', 'timer'];
@@ -151,9 +155,11 @@ export class Room extends DurableObject {
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     this.state = null;
     this.hostToken = null;
+    this.saveTimer = 0;
     ctx.blockConcurrencyWhile(async () => {
       this.state = (await ctx.storage.get('state')) ?? null;
       this.hostToken = (await ctx.storage.get('hostToken')) ?? null;
+      if (this.state && !this.state.lastActive) this.state.lastActive = Date.now();
     });
   }
 
@@ -164,6 +170,7 @@ export class Room extends DurableObject {
     this.state = {
       code,
       createdAt: Date.now(),
+      lastActive: Date.now(),
       tool: '',
       members: {},
       bingo: { round: 1, drawn: [], cards: {}, marks: {}, winners: [] },
@@ -253,7 +260,7 @@ export class Room extends DurableObject {
         ws.send(JSON.stringify({ t: 'error', message: event.error }));
         return;
       }
-      await this.save();
+      await this.save(true);
       this.broadcast(event);
       return;
     }
@@ -268,7 +275,7 @@ export class Room extends DurableObject {
       ws.send(JSON.stringify({ t: 'error', message: event.error }));
       return;
     }
-    await this.save();
+    await this.save(SAVE_NOW.has(msg.t));
     this.broadcast(event);
   }
 
@@ -529,9 +536,25 @@ export class Room extends DurableObject {
   }
 
   // --- 保存・配信 ---
-  async save() {
-    await this.ctx.storage.put('state', this.state);
-    await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL);
+  /**
+   * 状態を保存する。
+   * 書き込み回数を減らすため、通常は SAVE_DELAY の間の変更を1回にまとめて書く。
+   * 削除の予約（alarm）は書き直さず、最後に使われた時刻（lastActive）を状態に入れておき、
+   * alarm の時点で24時間たったかを判断する。
+   */
+  async save(now = false) {
+    this.state.lastActive = Date.now();
+    if (now) {
+      await this.flush();
+      return;
+    }
+    if (!this.saveTimer) this.saveTimer = setTimeout(() => this.flush(), SAVE_DELAY);
+  }
+
+  async flush() {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = 0;
+    if (this.state) await this.ctx.storage.put('state', this.state);
   }
 
   openSockets(exclude) {
@@ -598,10 +621,18 @@ export class Room extends DurableObject {
 
   async alarm() {
     if (!this.state) return;
+    // 最後に使われてから24時間たっていなければ、その時刻まで延ばす
+    const expires = (this.state.lastActive || 0) + ROOM_TTL;
+    if (Date.now() < expires) {
+      await this.ctx.storage.setAlarm(expires);
+      return;
+    }
     if (this.openSockets().length) {
       await this.ctx.storage.setAlarm(Date.now() + 6 * 60 * 60 * 1000);
       return;
     }
+    clearTimeout(this.saveTimer);
+    this.saveTimer = 0;
     this.state = null;
     this.hostToken = null;
     await this.ctx.storage.deleteAll();
